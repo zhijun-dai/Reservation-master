@@ -1,0 +1,3 @@
+# Root-level ignores
+.venv/
+Reservation-master_developing/

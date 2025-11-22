@@ -1,7 +1,7 @@
 # 南京医科大学场馆自动预约脚本
 
-项目基于https://github.com/Anorak2004/Reservation
-进行了精简
+项目基于https://github.com/Anorak2004/Reservation \
+对其进行了精简
 
 当前版本的仓库已被精简为一套纯脚本化的自动预约流程。我们只保留了连通学校场馆预约系统所需的核心文件：
 

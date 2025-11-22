@@ -43,9 +43,10 @@
 - `LOGIN_DATA`：预约登录账号和密码
 - `DEFAULT_USERS`：入场人员学号（多个学号用 `/` 分隔）
 - `SERVICE_ID`：场馆类型，默认 `22` 表示羽毛球馆
-- `ADVANCE_DAY_CANDIDATES`：放号后希望抢的提前天数列表
-- `PREFERRED_TIME_SLOTS`：按优先级设置的时间段
+- `PRIORITIZE_DATES` / `ALLOW_SAME_DAY_BOOKING`：控制优先抢哪天
+- `WEEKLY_PREFERRED_TIME_SLOTS` / `PREFERRED_TIME_SLOTS`：按星期或全局的时间段偏好
 - `VENUE_KEYWORD`：可选的场地名称关键字过滤
+- `AGGREGATE_ALL_DATES`：是否一次遍历今明全部场地
 - `BOOKING_HOURS`：允许执行预约请求的时间段
 - `SCHEDULE_TIME`：每日自动尝试预约的时间
 
@@ -55,7 +56,7 @@
 python config_setup.py
 ```
 
-脚本会在 `backend/data/` 下生成缓存文件 `service_data_{serviceid}_{date}.json`，并在终端打印当前选中的场地信息。
+脚本会实时拉取候选日期的场地，并在终端打印“候选总数 / 每日数量”等信息。
 
 ## 启动自动预约
 
@@ -113,4 +114,4 @@ sudo systemctl enable --now njmu-reservation.service
 2. 更新代码或配置后重新运行 `config_setup.py` 校验场地。
 3. 重新启动 `scheduler.py`。
 
-若修改了账号或时间段偏好，记得清理 `backend/data/` 下的旧缓存，以免使用过期数据。
+若修改了账号或时间段偏好，重新运行 `config_setup.py` 即可，无需手动清理缓存。

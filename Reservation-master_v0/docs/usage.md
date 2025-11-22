@@ -9,13 +9,12 @@
    - `LOGIN_DATA`：登录学号与密码。
    - `DEFAULT_USERS`：随行人员学号，多个学号使用 `/` 分隔。
    - `SERVICE_ID`：目标场馆类型（默认 22）。
-   - `ADVANCE_DAY_CANDIDATES`：按优先级排列的提前天数。
-   - `PREFERRED_TIME_SLOTS`：希望预约的时间段列表。
+   - `PRIORITIZE_DATES` / `ALLOW_SAME_DAY_BOOKING`：控制先抢今天还是明天。
+   - `WEEKLY_PREFERRED_TIME_SLOTS` / `PREFERRED_TIME_SLOTS`：希望预约的时间段列表。
    - `VENUE_KEYWORD`（可选）：筛选场地名称包含指定关键字。
+   - `AGGREGATE_ALL_DATES`：是否在一次运行中遍历多个日期的所有场地/时间段。
    - `BOOKING_HOURS`：允许脚本执行预约请求的时间范围。
    - `SCHEDULE_TIME`：每日定时尝试预约的时间。
-
-> 建议运行前清空 `backend/data/` 下过期的 JSON 缓存，以免引用旧数据。
 
 ## 2. 拉取场地并写入配置
 
@@ -27,11 +26,10 @@ python config_setup.py
 
 脚本会：
 
-- 遍历 `ADVANCE_DAY_CANDIDATES` 找出首个可用日期；
-- 带登录态访问学校接口，获取可用场地；
-- 根据时间段偏好和关键字规则筛选场地；
-- 将选中的场地信息写入 `Config.BOOKING_DATA` 并在终端展示；
-- 缓存文件到 `backend/data/service_data_{serviceid}_{date}.json`。
+- 依据 `PRIORITIZE_DATES` / `ALLOW_SAME_DAY_BOOKING` 生成日期候选；
+- 带登录态访问学校接口，实时获取可用场地；
+- 按周偏好或全局偏好筛选符合的时间段；
+- 将所有候选日期/场地/时段写入 `Config.BOOKING_DATA['slot_candidates']` 并在终端展示。
 
 若输出没有符合偏好的场地或未拉取到任何场地数据，请检查放号时间与网络环境。
 
@@ -66,9 +64,10 @@ python book.py
 
 | 输出 | 含义 |
 | --- | --- |
-| `没有获取到数据` | 接口返回空对象，可能尚未放号或账号无权限 |
+| `没有获取到数据` | 接口返回空对象，可能已被抢空或尚未放号 |
 | `预约失败：未到该日期的预订时间` | 放号尚未开始，调度器会继续等待并重试 |
 | `预约失败：每日限预约一场` | 当天已经成功预约，需要更换账号或等待次日 |
+| `其他错误：已过有效期，请重新选择` | 当前时间段已无效，脚本会立刻切换下一个候选 |
 | `请求失败，状态码: XXX` | 学校接口异常或网络问题，脚本会继续重试 |
 
 ## 6. 建议的日常流程
@@ -82,6 +81,6 @@ python book.py
 
 - 终端输出是最直接的运行日志，可根据提示定位问题。
 - 如需长期留存日志，可使用 `python scheduler.py > scheduler.log 2>&1` 持续采集。
-- 若 `Config.BOOKING_DATA` 未能填充，请检查 `config_setup.py` 输出并验证缓存文件内容。
+- 若 `Config.BOOKING_DATA` 未能填充，请检查 `config_setup.py` 输出是否拉取到了任何候选。
 
 掌握以上步骤即可完成脚本的日常运行。 

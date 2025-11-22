@@ -5,7 +5,7 @@
 ## 配置与准备
 
 ### Q: `Config.BOOKING_DATA` 一直是空的怎么办？
-A: 运行 `python config_setup.py` 并关注输出。如果提示未拉取到任何场地数据，说明学校尚未放号或账号无权限；若提示没有符合偏好的场地，请调整 `PREFERRED_TIME_SLOTS`、`VENUE_KEYWORD` 或 `ADVANCE_DAY_CANDIDATES`。
+A: 运行 `python config_setup.py` 并关注输出。如果提示未拉取到任何场地数据，说明学校尚未放号、已被抢空或账号无权限；若提示没有符合偏好的场地，请调整 `WEEKLY_PREFERRED_TIME_SLOTS`、`VENUE_KEYWORD`、`PRIORITIZE_DATES` 等配置。
 
 ### Q: 需要同时预约多个人吗？
 A: 在 `config.py` 中将 `DEFAULT_USERS` 设置为多个学号，用 `/` 分隔，例如 `"22011207/22011208"`。脚本会直接将该字符串提交给官方系统。

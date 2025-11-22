@@ -2,9 +2,9 @@
 
 当前版本的仓库已被精简为一套纯脚本化的自动预约流程。我们只保留了连通学校场馆预约系统所需的核心文件：
 
-- `backend/config.py`：集中管理账号密码、日期策略、时间段偏好等配置。
+- `backend/config.py`：集中管理账号密码、日期策略、时间段偏好等配置。若需提交到 GitHub，请改写并引用 `backend/config.example.py`。
 - `backend/config_setup.py`：按配置抓取场地信息并填充 `Config.BOOKING_DATA`。
-- `backend/fetch_data.py`：使用登录态请求学校接口并缓存 JSON 数据。
+- `backend/fetch_data.py`：使用登录态请求学校接口并返回实时 JSON 数据（默认不再落地缓存）。
 - `backend/login.py`：封装登录逻辑，返回带 Cookie 的 `requests.Session`。
 - `backend/book.py`：根据 `Config.BOOKING_DATA` 构造预约请求并自动重试。
 - `backend/scheduler.py`：每日定时执行预约流程，可直接运行。
@@ -31,9 +31,11 @@ pip install -r requirements.txt
 - `LOGIN_DATA['dlm']` / `LOGIN_DATA['mm']`：登录学号和密码。
 - `DEFAULT_USERS`：实际入场的学号，多个学号用 `/` 分隔。
 - `SERVICE_ID`：场馆类型，羽毛球场默认为 `22`。
-- `ADVANCE_DAY_CANDIDATES`：抢号的提前天数优先级，例如 `[2, 1]` 表示优先尝试后天，其次明天。
-- `PREFERRED_TIME_SLOTS`：按顺序列出倾向的时间段（与官网展示保持一致）。
+- `PRIORITIZE_DATES`：日期优先级（如 `['tomorrow', 'today']`）。
+- `ALLOW_SAME_DAY_BOOKING`：是否在候选列表中纳入 “今天”。
+- `WEEKLY_PREFERRED_TIME_SLOTS` / `PREFERRED_TIME_SLOTS`：按星期或全局的时间段偏好。
 - `VENUE_KEYWORD`：可选关键字过滤场地名称。
+- `AGGREGATE_ALL_DATES`：是否在一次运行中遍历今明两天所有场地/时段。
 
 ### 3. 预拉取场地并确认配置
 
@@ -43,10 +45,10 @@ pip install -r requirements.txt
 
 该脚本将：
 
-1. 根据 `ADVANCE_DAY_CANDIDATES` 依次请求学校接口；
-2. 匹配 `PREFERRED_TIME_SLOTS` 中优先级最高的可用时段；
-3. 将选中的场地写入 `Config.BOOKING_DATA` 并打印结果；
-4. 缓存在 `backend/data/service_data_{serviceid}_{date}.json`，避免重复联网。
+1. 按 `PRIORITIZE_DATES` 和 `ALLOW_SAME_DAY_BOOKING` 生成日期候选；
+2. 在线实时拉取每个日期的场地数据；
+3. 根据周维度或全局的时间段偏好筛选可用场地；
+4. 将今明两天（或配置的全部日期）写入 `Config.BOOKING_DATA['slot_candidates']`，供预约流程逐个尝试。
 
 若提示“未拉取到场地”或“没有符合偏好”，请确认：
 
@@ -61,16 +63,16 @@ pip install -r requirements.txt
 ```
 
 - 启动后会先循环调用 `setup_config()`，直至成功选中场地。
-- 然后按照 `Config.SCHEDULE_TIME` 指定的时间（默认每日 08:00）执行预约。
+- 处于可预约时间段时会立即尝试一次；其余时间按照 `Config.SCHEDULE_TIME` 指定的时间（默认每日 08:00）执行预约。
 - 只有在 `Config.BOOKING_HOURS` 覆盖的时间段内才会真正发出预约请求。
-- 当优先日期发生切换时，会自动重新抓取场地并刷新配置。
+- 每次预约前都会重新拉取最新场地；当优先日期发生切换时同样会刷新配置。
 
 运行时请保持终端开启，或将脚本交由任务计划（Windows Task Scheduler、Linux systemd 等）托管。
 
 ## 常见操作
 
 - **手动立即尝试预约**：确保 `config_setup.py` 运行成功后，执行 `python book.py`。
-- **查看缓存数据**：浏览 `backend/data/` 下的 JSON 文件确认场地列表。
+- **查看候选列表**：关注 `setup_config()` 输出或在调度输出中查看 “候选总数/日期”。
 - **调整时间段优先级**：直接修改 `PREFERRED_TIME_SLOTS` 的顺序即可。
 
 ## 常见问题
@@ -80,7 +82,7 @@ pip install -r requirements.txt
 | 登录失败或请求异常 | 校园网/VPN 状态、账号密码是否正确、学校系统是否可访问 |
 | 一直提示“未到该日期的预订时间” | 学校尚未放号，调度器会在时间范围内自动重试 |
 | 返回“每日限预约一场” | 说明账号当日已有成功预约，需更换账号或次日再试 |
-| 获取到的场地列表为空 | 放号尚未开放，或配置的 `SERVICE_ID` / 日期偏好不正确 |
+| 获取到的场地列表为空 | 可能已被抢空或学校尚未放号，也可能是 `SERVICE_ID` / 日期优先级配置不匹配 |
 
 ## 与旧版本的区别
 

@@ -225,4 +225,7 @@ class Config:
     @staticmethod
     def next_booking_date():
         """返回首选的预约日期。"""
-        return Config.booking_date_candidates()[0]
+        candidates = Config.booking_date_candidates()
+        if candidates:
+            return candidates[0]
+        return datetime.date.today().isoformat()

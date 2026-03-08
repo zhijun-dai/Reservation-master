@@ -1,5 +1,8 @@
 # utils.py
-from config import Config
+try:
+    from .config import Config
+except ImportError:
+    from config import Config
 
 def generate_payload():
     """

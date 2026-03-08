@@ -4,9 +4,14 @@
 - 会把 `Config.LOGIN_DATA` 和 `Config.DEFAULT_USERS` 替换为测试数据
 - 开启 `TRY_ALL_SLOTS_FOR_TEST`，以便按顺序尝试当天的所有可用时段
 """
-from config import Config
-from config_setup import setup_config
-from book import Booking
+try:
+    from .config import Config
+    from .config_setup import setup_config
+    from .book import Booking
+except ImportError:
+    from config import Config
+    from config_setup import setup_config
+    from book import Booking
 import time
 
 

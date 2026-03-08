@@ -6,7 +6,7 @@
 
 - Python 3.10 及以上版本（推荐与示例环境保持一致）
 - Windows、macOS 或 Linux
-- 能访问学校预约系统的网络（校园网或 VPN）
+- 能访问学校预约系统的网络
 
 ## 安装步骤
 
@@ -15,7 +15,7 @@
    下载或克隆项目后进入 `backend` 目录：
 
    ```powershell
-   cd Reservation-master_v0\backend
+   cd Reservation-master_v2\backend
    ```
 
 2. **创建虚拟环境（可选但推荐）**
@@ -31,10 +31,11 @@
    pip install -r requirements.txt
    ```
 
-   当前仅依赖两个包：
+   当前依赖包：
 
-   - `requests`：访问学校预约接口
-   - `schedule`：管理每日定时任务
+- `requests`：访问学校预约接口
+- `schedule`：管理每日定时任务
+- `tkinter`：Python 标准库，用于图形界面（无需额外安装）
 
 ## 配置脚本
 
@@ -58,7 +59,21 @@ python config_setup.py
 
 脚本会实时拉取候选日期的场地，并在终端打印“候选总数 / 每日数量”等信息。
 
-## 启动自动预约
+## 启动系统
+
+### 方法一：启动图形界面（推荐）
+
+```powershell
+..\.venv\Scripts\python.exe Start.py
+```
+
+图形界面提供了：
+- 🏠 **首页**：系统介绍、快速指南、使用说明、常见问题
+- ⚙️ **配置**：账号设置、时间偏好、星期偏好
+- 🎯 **操作**：预拉取场地、立即预约、自动预约控制
+- 📋 **日志**：实时记录所有操作和系统状态
+
+### 方法二：启动命令行调度器
 
 在确认 `Config.BOOKING_DATA` 已正确填充后启动调度器：
 
@@ -93,8 +108,8 @@ Description=NJMU reservation scheduler
 After=network.target
 
 [Service]
-WorkingDirectory=/path/to/Reservation-master_v0/backend
-ExecStart=/path/to/Reservation-master_v0/.venv/bin/python scheduler.py
+WorkingDirectory=/path/to/Reservation-master_v2/backend
+ExecStart=/path/to/Reservation-master_v2/.venv/bin/python scheduler.py
 Restart=always
 RestartSec=5
 

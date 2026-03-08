@@ -1,3 +1,9 @@
-# Root-level ignores
-.venv/
-Reservation-master_developing/
+# Ignore everything by default
+*
+
+# Keep the root .gitignore
+!.gitignore
+
+# Track only v2.2 contents
+!Reservation-master_v2.2/
+!Reservation-master_v2.2/**

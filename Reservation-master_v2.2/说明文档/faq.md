@@ -19,7 +19,7 @@ A: 可以，只要知道对应的 `serviceid`。修改 `SERVICE_ID` 后重新运
 A: 缓存不会自动清理。建议在每次放号前删除 `backend/data/` 下旧的 `service_data_*` 文件，以确保使用最新数据。
 
 ### Q: 运行 `config_setup.py` 报网络错误怎么办？
-A: 确认处于校园网或 VPN 环境，且账号可以正常访问 http://order.njmu.edu.cn:8088。如仍失败，可稍后再试或使用浏览器登录验证。
+A: 确认账号可以正常访问 http://order.njmu.edu.cn:8088。如仍失败，可稍后再试或使用浏览器登录验证。
 
 ## 自动预约
 

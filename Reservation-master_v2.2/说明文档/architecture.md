@@ -1,8 +1,13 @@
 ﻿# 运行架构
 
-当前项目以最小化脚本形式运作，整体架构非常简单：
+当前项目以最小化脚本形式运作，同时提供图形用户界面，整体架构如下：
 
 ```
++---------------------+
+|  图形界面 (Start.py)  |
++----------+----------+
+           |
+           v
 +---------------------+
 |  定时调度 (schedule) |
 +----------+----------+
@@ -51,6 +56,31 @@
 | `login.py` | 登录学校系统，返回可复用的 `requests.Session` |
 | `book.py` | 根据当前配置构造预约请求并自动重试 |
 | `scheduler.py` | 每日定时运行预约流程 |
+| `Start.py` | 图形用户界面入口，提供可视化配置和操作 |
+| `utils.py` | 提供工具函数，如 `generate_payload()` |
+
+## 模块详细说明
+
+### login.py
+- `Login.get_session()` 按需使用显式凭证或 `Config.LOGIN_DATA` 登录学校预约系统，并访问一次场馆展示页以确保 Cookie 完整。
+- `Login.pre_login()` 仍保留给手动实例化 `Booking` 时使用（当前流程主要依赖静态方法 `Booking.book_venue()`）。
+
+### book.py
+- 类 `Booking` 提供两种使用方式：
+  - 实例方法 `pre_book()`：使用显式账号密码循环尝试预约，多用于测试或特殊需求。
+  - 静态方法 `book_venue()`：读取 `Config.BOOKING_DATA` 并在同一会话内重试 5 次。
+- 针对常见错误（未到预约时间、每日限预约一场、响应非 JSON）进行了分类处理，便于及时终止或刷新会话。
+
+### scheduler.py
+- `check_booking_conditions()` 是调度入口：
+  - 首先确认当前时间位于 `Config.BOOKING_HOURS`。
+  - 如果首选日期发生变化，会重新运行 `setup_config()`。
+  - 随后调用 `Booking.book_venue()` 并捕获异常。
+- `start_scheduler()` 将上述函数注册到 `schedule.every().day.at(Config.SCHEDULE_TIME)`，并持续轮询执行。
+- 在脚本作为主程序运行时，会不断尝试 `setup_config()` 直到成功，再启动调度循环。
+
+### utils.py
+- 当前仅保留 `generate_payload()` 作为示例工具函数，其逻辑与 `Config.BOOKING_DATA` 相匹配，便于需要调试请求体时复用。
 
 ## 调度逻辑
 
@@ -66,3 +96,5 @@
 - 调度器完全基于 `schedule` 与 `time` 模块，无额外框架。
 
 这套架构的目标是保证脚本轻量、易部署、易维护，同时可按需扩展（例如将预约结果写入日志、对接通知渠道等）。
+
+开发者若需要继续做代码清理与重构，请结合 `backend-dev-map.md`（模块关系与重构边界）。

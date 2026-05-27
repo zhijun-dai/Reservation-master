@@ -1,197 +1,52 @@
 # 南京医科大学场馆自动预约系统 v2.2
 
-当前版本的系统提供了两种使用方式：**图形界面操作**（推荐）和**脚本化自动预约**，满足不同用户的需求。
-
-## 🌟 主要特性
-
-- ✨ **图形用户界面** - 专为医学生设计，无需编程知识即可使用
-- 🎯 **智能预约** - 支持按星期几设置不同的时间偏好
-- 🔄 **自动预约** - 每天 08:00 自动尝试预约，无需人工干预
-- 📊 **实时日志** - 详细记录所有操作和系统状态
-- ⚙️ **灵活配置** - 支持多种预约策略和偏好设置
-
-## 核心文件
-
-- `backend/config.py`：集中管理账号密码、日期策略、时间段偏好等配置。
-- `backend/config_setup.py`：按配置抓取场地信息并填充 `Config.BOOKING_DATA`。
-- `backend/fetch_data.py`：使用登录态请求学校接口并返回实时 JSON 数据。
-- `backend/login.py`：封装登录逻辑，返回带 Cookie 的 `requests.Session`。
-- `backend/book.py`：根据 `Config.BOOKING_DATA` 构造预约请求并自动重试。
-- `backend/scheduler.py`：每日定时执行预约流程。
-- `Start.py`：图形用户界面入口，提供配置、操作和日志页面。
-
-> 默认针对羽毛球馆（`serviceid=22`）。
+自动预约羽毛球场的图形界面工具。双击即用，无需编程。
 
 ## 快速开始
 
-### 1. 创建虚拟环境并安装依赖
-
 ```powershell
-cd backend
-# 创建虚拟环境
-python -m venv ..\.venv
-# 激活虚拟环境
-..\.venv\Scripts\activate
-# 安装依赖
-pip install -r requirements.txt
-```
-
-`requirements.txt` 包含了 `requests`、`schedule` 和 `tkinter`（Python 标准库），满足自动预约和图形界面所需的全部依赖。
-
-#### 使用新的 Python 版本创建虚拟环境
-
-如果您使用的是较新的 Python 版本（如 Python 3.13），可以使用以下命令：
-
-```powershell
-cd backend
-# 创建虚拟环境
+# 1. 创建虚拟环境并安装依赖
 python -m venv .venv
-# 激活虚拟环境
-.venv\Scripts\Activate.ps1
-# 安装依赖
-pip install -r requirements.txt
+.venv\Scripts\pip install -r Reservation-master_v2.2\backend\requirements.txt
+
+# 2. 启动
+.venv\Scripts\python.exe Reservation-master_v2.2\Start.py
 ```
 
-### 2. 启动图形界面（推荐）
+或者直接双击 `Reservation-master_v2.2\install.bat`（安装依赖），再双击 `启动预约系统.bat`（启动程序）。
 
-```powershell
-..\.venv\Scripts\python.exe Start.py
+## 核心文件
+
+| 文件 | 作用 |
+|------|------|
+| `Start.py` | Tkinter 图形界面入口，4 个标签页：首页、配置、操作、日志 |
+| `backend/config.py` | 配置项：账号、时间段偏好、日期优先级、网络参数 |
+| `backend/login.py` | `get_session()` — 登录学校 SSO，返回带 Cookie 的 Session |
+| `backend/fetch_data.py` | `fetch_service_data()` — 查询指定日期的可用场地 |
+| `backend/config_setup.py` | `setup_config()` — 拉取数据并按偏好过滤，写入候选列表 |
+| `backend/book.py` | `book_venue()` — 逐个尝试候选，自动重试（5 次/个） |
+| `backend/scheduler.py` | 每日 08:00 自动拉取数据并预约 |
+| `_compat.py` | 统一后端模块的导入路径 |
+
+## 配置说明
+
+`backend/config.py` 中：
+
+- `LOGIN_DATA` — 登录学号和密码
+- `DEFAULT_USERS` — 入场人学号（多个用 `/` 分隔）
+- `PRIORITIZE_DATES` — 日期优先级，如 `['tomorrow', 'today']`
+- `PREFERRED_TIME_SLOTS` — 全局时间段偏好（按顺序尝试）
+- `WEEKLY_PREFERRED_TIME_SLOTS` — 按星期几的时间段偏好
+- `FETCH_SCAN_DAYS = 3` — 预拉取时扫描未来 N 天
+- `SCHEDULE_TIME = "08:00"` — 每日自动预约时间
+- `REQUEST_TIMEOUT_SECONDS = 10` — 网络请求超时
+
+设置页已支持点击数字（1/2/3...）排序时间段和日期优先级。
+
+## 数据流
+
 ```
-
-图形界面提供了：
-- 🏠 **首页**：系统介绍、快速指南、使用说明、常见问题
-- ⚙️ **配置**：账号设置、时间偏好、星期偏好
-- 🎯 **操作**：预拉取场地、立即预约、自动预约控制
-- 📋 **日志**：实时记录所有操作和系统状态
-
-### 3. 配置账号与偏好
-
-#### 方法一：图形界面配置（推荐）
-
-在图形界面的【配置】页面：
-1. 填写学号和密码
-2. 设置默认使用者（实际入场的学号，多个用 `/` 分隔）
-3. 选择场馆类型（羽毛球场默认为 `22`）
-4. 设置日期优先级（如 `tomorrow,today`）
-5. 设置全局时间段偏好（勾选需要的时间段，界面按从早到晚显示）
-6. 为每周的每一天设置不同的时间偏好（可选）
-7. 点击"保存配置"按钮
-
-#### 方法二：直接修改配置文件
-
-修改 `backend/config.py`：
-
-- `LOGIN_DATA['dlm']` / `LOGIN_DATA['mm']`：登录学号和密码。
-- `DEFAULT_USERS`：实际入场的学号，多个学号用 `/` 分隔。
-- `SERVICE_ID`：场馆类型，羽毛球场默认为 `22`。
-- `PRIORITIZE_DATES`：日期优先级（如 `['tomorrow', 'today']`）。
-- `ALLOW_SAME_DAY_BOOKING`：是否在候选列表中纳入 "今天"。
-- `WEEKLY_PREFERRED_TIME_SLOTS` / `PREFERRED_TIME_SLOTS`：按星期或全局的时间段偏好。
-- `VENUE_KEYWORD`：可选关键字过滤场地名称。
-- `AGGREGATE_ALL_DATES`：是否在一次运行中遍历今明两天所有场地/时段。
-- `REQUEST_TIMEOUT_SECONDS`：网络请求超时时间（秒），用于登录、拉取和预约请求。
-
-### 4. 预拉取场地并确认配置
-
-#### 方法一：图形界面操作
-
-在图形界面的【操作】页面点击"预拉取场地"按钮。
-
-#### 方法二：命令行操作
-
-```powershell
-..\.venv\Scripts\python.exe backend\config_setup.py
+配置 → get_session() → fetch_service_data(date, serviceid)
+  → setup_config() 按偏好过滤 → BOOKING_DATA['slot_candidates']
+  → book_venue() 逐个尝试（含重试）
 ```
-
-该脚本将：
-
-1. 按 `PRIORITIZE_DATES` 和 `ALLOW_SAME_DAY_BOOKING` 生成日期候选；
-2. 在线实时拉取每个日期的场地数据；
-3. 根据周维度或全局的时间段偏好筛选可用场地；
-4. 将今明两天（或配置的全部日期）写入 `Config.BOOKING_DATA['slot_candidates']`，供预约流程逐个尝试。
-
-若提示"未拉取到场地"或"没有符合偏好"，请确认：
-
-- 学校是否已经对目标日期放号；
-
-- `SERVICE_ID`、时间段关键字是否设置正确。
-
-### 5. 启动自动预约
-
-#### 方法一：图形界面操作
-
-在图形界面的【操作】页面点击"启动自动预约"按钮。
-
-#### 方法二：命令行操作
-
-```powershell
-..\.venv\Scripts\python.exe backend\scheduler.py
-```
-
-- 启动后会先循环调用 `setup_config()`，直至成功选中场地。
-- 处于可预约时间段时会立即尝试一次；其余时间按照 `Config.SCHEDULE_TIME` 指定的时间（默认每日 08:00）执行预约。
-- 只有在 `Config.BOOKING_HOURS` 覆盖的时间段内才会真正发出预约请求。
-- 每次预约前都会重新拉取最新场地；当优先日期发生切换时同样会刷新配置。
-
-## 常见操作
-
-- **手动立即尝试预约**：
-  - 图形界面：在【操作】页面点击"立即预约"按钮。
-  - 命令行：确保 `config_setup.py` 运行成功后，执行 `python book.py`。
-- **查看候选列表**：关注 `setup_config()` 输出或在图形界面的【日志】页面查看。
-- **调整时间段优先级**：在图形界面的【配置】页面修改或直接修改 `PREFERRED_TIME_SLOTS` 的顺序。
-
-## 常见问题
-
-| 现象 | 建议排查 |
-| --- | --- |
-| 登录失败或请求异常 | 账号密码是否正确、学校系统是否可访问 |
-| 一直提示"未到该日期的预订时间" | 学校尚未放号，调度器会在时间范围内自动重试 |
-| 返回"每日限预约一场" | 说明账号当日已有成功预约，需更换账号或次日再试 |
-| 获取到的场地列表为空 | 可能已被抢空或学校尚未放号，也可能是 `SERVICE_ID` / 日期优先级配置不匹配 |
-
-## 时间偏好说明
-
-系统支持两种时间偏好设置：
-
-### 全局时间段偏好
-- 默认的时间段偏好设置
-- 当某天没有单独设置时使用此配置
-- 通过勾选框选择时间段，时间段列表按从早到晚显示
-- 勾选后界面会显示 `1/2/3...` 序号，系统按序号顺序尝试已勾选时间段
-- ⚠️ 若想优先晚场，请只勾选目标晚场或在周配置里单独设置
-
-### 按星期几的时间段偏好
-- 可以为每周的每一天（周一到周日）设置不同的时间偏好
-- 留空则使用全局时间段偏好
-- 适合不同日期有不同课程安排的情况
-- 优先级高于全局设置
-
-### 示例
-- 全局勾选顺序：先勾选 `20:01-21:00`，再勾选 `19:01-20:00`
-- 周一勾选：`18:01-19:00`、`19:01-20:00`
-- 周二留空（使用全局偏好）
-
-这样设置后：
-- 周一会尝试 `18:01-19:00`，再尝试 `19:01-20:00`
-- 周二及其他未单独设置日期会按序号尝试（上例中先 `20:01-21:00`，再 `19:01-20:00`）
-
-## 与旧版本的区别
-
-- **V0 到 v2 的升级**：
-  - 保留了核心的预约功能，移除了复杂的 FastAPI 和数据库模型
-  - 简化了依赖，只保留必要的库
-  - 增加了图形用户界面，方便不熟悉编程的用户使用
-  - 优化了代码结构，提高了可维护性
-  - 增强了错误处理和重试机制
-  - 支持按星期几设置不同的时间偏好
-
-- **v2 新增特性**：
-  - 🎨 精美的图形用户界面，支持可视化配置和操作
-  - 📝 实时日志显示，方便查看操作结果
-  - 🧵 多线程操作，确保界面响应流畅
-  - 💾 配置自动保存，无需手动修改配置文件
-  - 📊 统计信息，显示预约次数和最后预约时间
-  - ❓ 内置使用说明和常见问题解答
-
-当前版本聚焦于"简单易用的自动预约系统"，适合所有用户使用，尤其是不熟悉电脑和编程的医学生。

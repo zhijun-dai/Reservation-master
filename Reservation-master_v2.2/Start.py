@@ -2,30 +2,27 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 import threading
-import sys
-import os
+import sys, os, re
 import importlib
 import shutil
 
-# 添加backend目录到Python路径
-sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
 
 from backend.config import Config
 import datetime
 
 # 延迟导入依赖项，以便GUI可以启动
 setup_config = None
-Booking = None
+book_venue = None
 start_scheduler = None
 stop_scheduler = None
 _last_dependency_error = ""
 
 def load_dependencies():
     global _last_dependency_error
-    global setup_config, Booking, start_scheduler, stop_scheduler
+    global setup_config, book_venue, start_scheduler, stop_scheduler
     try:
         from backend.config_setup import setup_config
-        from backend.book import Booking
+        from backend.book import book_venue
         from backend.scheduler import start_scheduler, stop_scheduler
         _last_dependency_error = ""
         return True
@@ -42,20 +39,25 @@ class BookingApp:
 
         # UI 设计令牌
         self.ui = {
-            'bg': '#f4f7fb',
+            'bg': '#f0f2f5',
             'surface': '#ffffff',
-            'text': '#1f2d3d',
-            'muted_text': '#5b6b7a',
-            'primary': '#2f80ed',
-            'primary_hover': '#2a74d8',
-            'success': '#1f9d6a',
-            'warning': '#d9822b',
-            'error': '#c0392b',
-            'border': '#dbe4ee',
+            'text': '#1a2332',
+            'muted_text': '#6b7a8d',
+            'primary': '#4f6ef7',
+            'primary_hover': '#3b5de7',
+            'primary_light': '#eef1ff',
+            'accent': '#ff6b6b',
+            'success': '#20c997',
+            'warning': '#fbbf24',
+            'error': '#ef4444',
+            'border': '#e2e5ea',
+            'header_bg': '#4f6ef7',
+            'header_fg': '#ffffff',
             'title_font': ('Microsoft YaHei UI', 20, 'bold'),
             'subtitle_font': ('Microsoft YaHei UI', 14),
-            'normal_font': ('Microsoft YaHei UI', 11),
+            'normal_font': ('Microsoft YaHei UI', 10),
             'action_font': ('Microsoft YaHei UI', 11, 'bold'),
+            'small_font': ('Microsoft YaHei UI', 9),
         }
 
         self.root.configure(bg=self.ui['bg'])
@@ -93,128 +95,103 @@ class BookingApp:
         # 自定义样式
         self.style.configure('App.TFrame', background=self.ui['bg'])
         self.style.configure('Card.TFrame', background=self.ui['surface'])
-        self.style.configure('Card.TLabelframe', background=self.ui['surface'], bordercolor=self.ui['border'])
-        self.style.configure('Card.TLabelframe.Label', background=self.ui['surface'], foreground=self.ui['primary'], font=('Microsoft YaHei UI', 11, 'bold'))
+        self.style.configure('Card.TLabelframe', background=self.ui['surface'], bordercolor=self.ui['border'], relief=tk.FLAT, borderwidth=1)
+        self.style.configure('Card.TLabelframe.Label', background=self.ui['surface'], foreground=self.ui['primary'], font=self.ui['action_font'])
 
+        self.style.configure('Header.TFrame', background=self.ui['header_bg'])
         self.style.configure('Title.TLabel', font=self.ui['title_font'], foreground=self.ui['text'], background=self.ui['bg'])
+        self.style.configure('HeaderTitle.TLabel', font=self.ui['title_font'], foreground=self.ui['header_fg'], background=self.ui['header_bg'])
+        self.style.configure('HeaderSub.TLabel', font=('Microsoft YaHei UI', 11), foreground='#c8d6ff', background=self.ui['header_bg'])
         self.style.configure('Subtitle.TLabel', font=self.ui['subtitle_font'], foreground=self.ui['muted_text'], background=self.ui['surface'])
-        self.style.configure('Section.TLabel', font=('Microsoft YaHei UI', 12, 'bold'), foreground=self.ui['primary'], background=self.ui['surface'])
+        self.style.configure('Section.TLabel', font=self.ui['subtitle_font'], foreground=self.ui['primary'], background=self.ui['surface'])
         self.style.configure('Normal.TLabel', font=self.ui['normal_font'], foreground=self.ui['text'], background=self.ui['surface'])
         self.style.configure('Muted.TLabel', font=self.ui['normal_font'], foreground=self.ui['muted_text'], background=self.ui['surface'])
         self.style.configure('Success.TLabel', font=self.ui['normal_font'], foreground=self.ui['success'], background=self.ui['surface'])
         self.style.configure('Warning.TLabel', font=self.ui['normal_font'], foreground=self.ui['warning'], background=self.ui['surface'])
         self.style.configure('Error.TLabel', font=self.ui['normal_font'], foreground=self.ui['error'], background=self.ui['surface'])
-        # 移除旧的Action.TButton样式定义
-        self.style.configure('Normal.TButton', font=('Microsoft YaHei UI', 10), padding=5)
-        
-        # 设置按钮样式 - 使用更直接的方式
-        self.style.configure('TButton', font=('Microsoft YaHei UI', 10))
-        
-        # 创建新的按钮样式，确保背景和前景色对比明显
-        # 使用更简单的样式定义，确保在所有主题下都能正确显示
-        self.style.configure('CustomAction.TButton', font=self.ui['action_font'], padding=10)
-        
-        # 为不同状态设置样式
-        self.style.map('CustomAction.TButton',
-                  background=[('!disabled', self.ui['primary']), ('pressed', self.ui['primary_hover']), ('active', self.ui['primary_hover'])],
-                  foreground=[('!disabled', 'white'), ('pressed', 'white'), ('active', 'white')])
+        self.style.configure('Normal.TButton', font=self.ui['normal_font'], padding=5)
+        self.style.configure('TButton', font=self.ui['normal_font'])
 
+        self.style.configure('Card.TLabelframe', background=self.ui['surface'], bordercolor=self.ui['border'], relief=tk.FLAT, borderwidth=1)
         self.style.configure('TNotebook', background=self.ui['bg'], borderwidth=0)
-        self.style.configure('TNotebook.Tab', padding=(18, 10), font=('Microsoft YaHei UI', 10, 'bold'))
+        self.style.configure('TNotebook.Tab', padding=(20, 10), font=self.ui['action_font'])
         self.style.map('TNotebook.Tab',
-                  background=[('selected', self.ui['surface']), ('!selected', '#eaf0f7')],
-                  foreground=[('selected', self.ui['primary']), ('!selected', self.ui['muted_text'])])
-        
-        # 创建主框架
+                  background=[('selected', self.ui['surface']), ('!selected', self.ui['bg'])],
+                  foreground=[('selected', self.ui['primary']), ('!selected', self.ui['muted_text'])],
+                  lightcolor=[('selected', self.ui['surface']), ('!selected', self.ui['bg'])],
+                  borderwidth=[('selected', 0), ('!selected', 0)])
+
+        # 顶部标题栏
+        header_frame = tk.Frame(root, bg=self.ui['header_bg'], height=64)
+        header_frame.pack(fill=tk.X)
+        header_frame.pack_propagate(False)
+
+        tk.Label(header_frame, text="🏸 南京医科大学场馆预约系统", font=self.ui['title_font'],
+                 bg=self.ui['header_bg'], fg=self.ui['header_fg']).pack(side=tk.LEFT, padx=24, pady=12)
+        tk.Label(header_frame, text="智能预约助手", font=('Microsoft YaHei UI', 12),
+                 bg=self.ui['header_bg'], fg='#dce3ff').pack(side=tk.LEFT, padx=(4, 0), pady=12)
+
+        self.clock_var = tk.StringVar(value="")
+        tk.Label(header_frame, textvariable=self.clock_var, font=('Microsoft YaHei UI', 11),
+                 bg=self.ui['header_bg'], fg='#c8d6ff').pack(side=tk.RIGHT, padx=24, pady=12)
+        self._tick_clock()
+
+        # 主框架
         self.main_frame = ttk.Frame(root, padding="16", style='App.TFrame')
         self.main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # 标题
-        title_label = ttk.Label(self.main_frame, text="🏸 南京医科大学场馆预约系统", style='Title.TLabel')
-        title_label.pack(pady=(0, 6))
 
-        top_meta = ttk.Frame(self.main_frame, style='App.TFrame')
-        top_meta.pack(fill=tk.X, pady=(0, 10))
-        ttk.Label(top_meta, text="智能预约助手 | v2", style='Muted.TLabel').pack(side=tk.LEFT)
-        self.clock_var = tk.StringVar(value="")
-        ttk.Label(top_meta, textvariable=self.clock_var, style='Muted.TLabel').pack(side=tk.RIGHT)
-        self._tick_clock()
-        
-        # 创建标签页
         self.notebook = ttk.Notebook(self.main_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True)
-        
-        # 欢迎页
+
         self.welcome_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.welcome_tab, text="🏠 首页")
-        
-        # 配置页
         self.config_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.config_tab, text="⚙️ 配置")
-        
-        # 操作页
         self.operation_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.operation_tab, text="🎯 操作")
-        
-        # 日志页
         self.log_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.log_tab, text="📋 日志")
-        
-        # 存储滚动区域
+
         self.canvases = {}
-        
-        # 初始化页面
+
         self.init_welcome_tab()
         self.init_config_tab()
         self.init_operation_tab()
         self.init_log_tab()
 
-        # 绑定鼠标滚轮事件到主窗口
         self.root.bind("<MouseWheel>", self._on_mouse_wheel)
         
         # 调度器线程
         self.scheduler_thread = None
         self.scheduler_running = False
         
-        # 当前状态
-        self.current_status = "就绪"
         self.last_booking_time = None
         self.booking_count = 0
     
+    _tab_key_map = {"🏠 首页": "welcome", "⚙️ 配置": "config", "🎯 操作": "operation"}
+
     def _on_mouse_wheel(self, event):
-        """处理鼠标滚轮事件"""
-        # 找到当前活动标签页的索引
         try:
-            current_tab_index = self.notebook.index(self.notebook.select())
+            tab_text = self.notebook.tab(self.notebook.select(), "text")
         except:
             return
-        
-        # 根据当前标签页索引获取对应的canvas
-        if current_tab_index == 0:  # 首页
-            canvas = self.canvases.get('welcome')
-        elif current_tab_index == 1:  # 配置
-            canvas = self.canvases.get('config')
-        elif current_tab_index == 2:  # 操作
-            canvas = self.canvases.get('operation')
-        else:
-            # 日志页使用的是scrolledtext，不需要处理
-            return
-        
+        canvas = self.canvases.get(self._tab_key_map.get(tab_text))
         if canvas:
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
     def _create_scrollable_tab(self, tab_widget, tab_key):
-        """创建可滚动标签页，并返回内部可布局 frame。"""
         canvas = tk.Canvas(tab_widget, bg=self.ui['bg'], highlightthickness=0, borderwidth=0)
         scrollbar = ttk.Scrollbar(tab_widget, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas, style='App.TFrame')
 
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
+        def _configure_inner(e):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            # 让内层 frame 宽度跟随 canvas
+            canvas.itemconfig(win_id, width=canvas.winfo_width())
 
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        scrollable_frame.bind("<Configure>", _configure_inner)
+
+        win_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         self.canvases[tab_key] = canvas
 
@@ -222,20 +199,37 @@ class BookingApp:
         scrollbar.pack(side="right", fill="y")
         return scrollable_frame
     
+    def _make_section(self, parent, title):
+        outer = tk.Frame(parent, bg=self.ui['bg'], pady=5)
+        outer.pack(fill=tk.X, padx=6)
+
+        card = tk.Frame(outer, bg=self.ui['surface'], padx=16, pady=14)
+        card.pack(fill=tk.X)
+
+        # 顶部彩色条
+        tk.Frame(card, bg=self.ui['primary'], height=3).pack(fill=tk.X)
+
+        # 标题行
+        header = tk.Frame(card, bg=self.ui['surface'])
+        header.pack(fill=tk.X, pady=(10, 6))
+        tk.Label(header, text=title, font=self.ui['action_font'],
+                 bg=self.ui['surface'], fg=self.ui['primary']).pack(side=tk.LEFT)
+
+        # 分隔线
+        tk.Frame(card, bg=self.ui['border'], height=1).pack(fill=tk.X, pady=(0, 8))
+
+        return card
+
     def init_welcome_tab(self):
-        """初始化欢迎页"""
         scrollable_frame = self._create_scrollable_tab(self.welcome_tab, 'welcome')
-        
-        # 欢迎信息
-        welcome_frame = ttk.LabelFrame(scrollable_frame, text="👋 欢迎使用", padding="20", style='Card.TLabelframe')
-        welcome_frame.pack(fill=tk.X, padx=20, pady=15)
+
+        welcome_frame = self._make_section(scrollable_frame, "👋 欢迎使用")
         
         ttk.Label(welcome_frame, text="欢迎使用南京医科大学场馆预约系统！", style='Subtitle.TLabel').pack(pady=8)
         ttk.Label(welcome_frame, text="本系统专为医学生设计，无需编程知识即可自动预约场馆。", style='Normal.TLabel').pack(pady=5)
         
         # 系统信息
-        info_frame = ttk.LabelFrame(scrollable_frame, text="ℹ️ 系统信息", padding="20", style='Card.TLabelframe')
-        info_frame.pack(fill=tk.X, padx=20, pady=15)
+        info_frame = self._make_section(scrollable_frame, "ℹ️ 系统信息")
         
         info_text = """
 当前版本：v2
@@ -246,10 +240,14 @@ class BookingApp:
         """
         info_label = ttk.Label(info_frame, text=info_text, style='Normal.TLabel', justify=tk.LEFT)
         info_label.pack(pady=8)
-        
+
+        py_path_label = tk.Label(info_frame, text=f"Python: {sys.executable}",
+                                 font=('Consolas', 8), anchor=tk.W, justify=tk.LEFT,
+                                 bg=self.ui['surface'], fg=self.ui['muted_text'])
+        py_path_label.pack(fill=tk.X, padx=4, pady=(0, 4))
+
         # 快速开始指南
-        guide_frame = ttk.LabelFrame(scrollable_frame, text="📖 快速开始指南", padding="20", style='Card.TLabelframe')
-        guide_frame.pack(fill=tk.X, padx=20, pady=15)
+        guide_frame = self._make_section(scrollable_frame, "📖 快速开始指南")
         
         steps = [
             "1️⃣ 首次使用，请先在【配置】页面设置账号密码和偏好",
@@ -266,8 +264,7 @@ class BookingApp:
             ttk.Label(steps_frame, text=step, style='Normal.TLabel').pack(pady=4, anchor=tk.W)
         
         # 使用说明
-        help_frame = ttk.LabelFrame(scrollable_frame, text="❓ 使用说明", padding="20", style='Card.TLabelframe')
-        help_frame.pack(fill=tk.X, padx=20, pady=15)
+        help_frame = self._make_section(scrollable_frame, "❓ 使用说明")
         
         help_sections = [
             ("🔑 账号配置", "填写你的学号和密码，以及实际入场人的学号（可以多人，用/分隔）"),
@@ -286,8 +283,7 @@ class BookingApp:
             ttk.Label(help_content, text=content, style='Normal.TLabel').pack(pady=4, anchor=tk.W)
         
         # 常见问题
-        faq_frame = ttk.LabelFrame(scrollable_frame, text="❗ 常见问题", padding="20", style='Card.TLabelframe')
-        faq_frame.pack(fill=tk.X, padx=20, pady=15)
+        faq_frame = self._make_section(scrollable_frame, "❗ 常见问题")
         
         faqs = [
             ("Q: 登录失败？", "A: 检查账号密码是否正确，确认学校系统可访问"),
@@ -303,16 +299,17 @@ class BookingApp:
             ttk.Label(faq_content, text=question, style='Section.TLabel').pack(pady=(12, 4), anchor=tk.W)
             ttk.Label(faq_content, text=answer, style='Normal.TLabel').pack(pady=4, anchor=tk.W)
         
-        # 状态显示
-        status_frame = ttk.LabelFrame(scrollable_frame, text="📊 当前状态", padding="20", style='Card.TLabelframe')
-        status_frame.pack(fill=tk.X, padx=20, pady=15)
-        
+        status_frame = self._make_section(scrollable_frame, "📊 当前状态")
+
         self.welcome_status_var = tk.StringVar(value="系统就绪，可以开始使用")
-        status_label = ttk.Label(status_frame, textvariable=self.welcome_status_var, style='Success.TLabel', font=('Microsoft YaHei UI', 12, 'bold'))
-        status_label.pack(pady=8)
-        
+        status_container = tk.Frame(status_frame, bg=self.ui['primary_light'], padx=16, pady=12)
+        status_container.pack(fill=tk.X, padx=10, pady=8)
+        tk.Label(status_container, textvariable=self.welcome_status_var,
+                 font=('Microsoft YaHei UI', 12, 'bold'), bg=self.ui['primary_light'], fg=self.ui['primary']).pack()
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        ttk.Label(status_frame, text=f"当前时间：{current_time}", style='Normal.TLabel').pack(pady=4)
+        tk.Label(status_container, text=f"当前时间：{current_time}",
+                 font=self.ui['normal_font'], bg=self.ui['primary_light'], fg=self.ui['muted_text']).pack(pady=(4, 0))
+        
     
     def init_config_tab(self):
         """初始化配置页"""
@@ -324,100 +321,286 @@ class BookingApp:
 
     def _build_account_config_section(self, parent):
         """构建账号与基础配置区域。"""
-        config_frame = ttk.LabelFrame(parent, text="🔑 账号配置", padding="20", style='Card.TLabelframe')
-        config_frame.pack(fill=tk.X, padx=20, pady=15)
+        config_frame = self._make_section(parent, "🔑 账号配置")
         
-        # 创建表单框架
         form_frame = ttk.Frame(config_frame)
-        form_frame.pack(fill=tk.X, padx=10)
-        
-        # 学号
-        ttk.Label(form_frame, text="学号:", style='Normal.TLabel').grid(row=0, column=0, sticky=tk.W, padx=10, pady=8)
-        self.username_var = tk.StringVar(value=Config.LOGIN_DATA['dlm'])
-        ttk.Entry(form_frame, textvariable=self.username_var, width=35).grid(row=0, column=1, sticky=tk.W, padx=10, pady=8)
-        ttk.Label(form_frame, text="（登录系统的账号，只需填一个）", style='Normal.TLabel').grid(row=0, column=2, sticky=tk.W, padx=10, pady=8)
-        
-        # 密码
-        ttk.Label(form_frame, text="密码:", style='Normal.TLabel').grid(row=1, column=0, sticky=tk.W, padx=10, pady=8)
-        self.password_var = tk.StringVar(value=Config.LOGIN_DATA['mm'])
-        ttk.Entry(form_frame, textvariable=self.password_var, show="*", width=35).grid(row=1, column=1, sticky=tk.W, padx=10, pady=8)
-        ttk.Label(form_frame, text="（登录系统的密码）", style='Normal.TLabel').grid(row=1, column=2, sticky=tk.W, padx=10, pady=8)
-        
-        # 默认使用者
-        ttk.Label(form_frame, text="默认使用者:", style='Normal.TLabel').grid(row=2, column=0, sticky=tk.W, padx=10, pady=8)
-        self.users_var = tk.StringVar(value=Config.DEFAULT_USERS)
-        ttk.Entry(form_frame, textvariable=self.users_var, width=35).grid(row=2, column=1, sticky=tk.W, padx=10, pady=8)
-        ttk.Label(form_frame, text="（实际入场学号，多个用/分隔，包括主预约人和随行人员）", style='Normal.TLabel').grid(row=2, column=2, sticky=tk.W, padx=10, pady=8)
-        
-        # 场馆类型
-        ttk.Label(form_frame, text="场馆类型:", style='Normal.TLabel').grid(row=3, column=0, sticky=tk.W, padx=10, pady=8)
-        self.service_var = tk.StringVar(value=Config.SERVICE_ID)
-        ttk.Entry(form_frame, textvariable=self.service_var, width=15).grid(row=3, column=1, sticky=tk.W, padx=10, pady=8)
-        ttk.Label(form_frame, text="（羽毛球馆：22）", style='Normal.TLabel').grid(row=3, column=2, sticky=tk.W, padx=10, pady=8)
-        
-        # 日期优先级
-        ttk.Label(form_frame, text="日期优先级:", style='Normal.TLabel').grid(row=4, column=0, sticky=tk.W, padx=10, pady=8)
-        self.date_priority_var = tk.StringVar(value=",".join(Config.PRIORITIZE_DATES))
-        ttk.Entry(form_frame, textvariable=self.date_priority_var, width=35).grid(row=4, column=1, sticky=tk.W, padx=10, pady=8)
-        ttk.Label(form_frame, text="（如：tomorrow,today）", style='Normal.TLabel').grid(row=4, column=2, sticky=tk.W, padx=10, pady=8)
+        form_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        fields = [
+            ("学号:", Config.LOGIN_DATA['dlm'], "（登录系统的账号，只需填一个）", None, 30),
+            ("密码:", Config.LOGIN_DATA['mm'], "（登录系统的密码）", "*", 30),
+            ("默认使用者:", Config.DEFAULT_USERS, "（实际入场学号，多个用/分隔）", None, 30),
+            ("场馆类型:", Config.SERVICE_ID, "（羽毛球馆：22）", None, 15),
+        ]
+        self._form_vars = {}
+        for row, (label, default, hint, show, width) in enumerate(fields):
+            tk.Label(form_frame, text=label, font=self.ui['normal_font'],
+                     bg=self.ui['surface'], fg=self.ui['text'], anchor='e', width=12).grid(
+                row=row, column=0, sticky=tk.E, padx=(10, 4), pady=8)
+            var = tk.StringVar(value=default)
+            entry = tk.Entry(form_frame, textvariable=var, width=width, show=show,
+                             font=self.ui['normal_font'], relief=tk.FLAT, bd=1,
+                             highlightthickness=1, highlightcolor=self.ui['border'],
+                             highlightbackground=self.ui['border'])
+            entry.grid(row=row, column=1, sticky=tk.W, padx=4, pady=8, ipady=4)
+            tk.Label(form_frame, text=hint, font=self.ui['small_font'],
+                     bg=self.ui['surface'], fg=self.ui['muted_text']).grid(
+                row=row, column=2, sticky=tk.W, padx=10, pady=8)
+            self._form_vars[label] = var
+
+        self.username_var = self._form_vars["学号:"]
+        self.password_var = self._form_vars["密码:"]
+        self.users_var = self._form_vars["默认使用者:"]
+        self.service_var = self._form_vars["场馆类型:"]
+
+        # 日期优先级（点击排序）
+        date_frame = tk.Frame(config_frame, bg=self.ui['surface'])
+        date_frame.pack(fill=tk.X, padx=10, pady=(0, 8))
+        tk.Label(date_frame, text="日期优先级:", font=self.ui['normal_font'],
+                 bg=self.ui['surface'], fg=self.ui['text'], anchor='e', width=12).pack(side=tk.LEFT, padx=(10, 4))
+        tk.Label(date_frame, text="点击设置顺序（1=优先尝试）",
+                 font=self.ui['small_font'], bg=self.ui['surface'], fg=self.ui['muted_text']).pack(side=tk.RIGHT, padx=10)
+
+        self._date_priority_vars = {}
+        self._date_priority_cells = {}
+        date_options = ["today", "tomorrow"]
+        saved = Config.PRIORITIZE_DATES or []
+
+        dp_row = tk.Frame(config_frame, bg=self.ui['surface'])
+        dp_row.pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        for d in date_options:
+            var = tk.BooleanVar(value=d in saved)
+            rank = self._dp_rank(d, saved)
+            display = str(rank) if rank else ""
+            cell = tk.Label(dp_row, text=display, font=('Microsoft YaHei UI', 16, 'bold'),
+                            width=3, anchor=tk.CENTER, cursor='hand2',
+                            bg=self.ui['primary'] if rank else self.ui['border'],
+                            fg='white' if rank else self.ui['muted_text'])
+            cell.pack(side=tk.LEFT, padx=6, ipadx=10, ipady=6)
+            cell.bind('<Button-1>', lambda e, x=d: self._dp_click(x))
+            cell.bind('<Enter>', lambda e, c=cell, x=d: c.configure(
+                bg=self.ui['primary_light'] if x in Config.PRIORITIZE_DATES else '#e8e8ec'))
+            cell.bind('<Leave>', lambda e, c=cell, x=d: c.configure(
+                bg=self.ui['primary'] if x in Config.PRIORITIZE_DATES else self.ui['border']))
+
+            tk.Label(dp_row, text=d, font=self.ui['small_font'],
+                     bg=self.ui['surface'], fg=self.ui['text']).pack(side=tk.LEFT, padx=(0, 8))
+
+            self._date_priority_vars[d] = var
+            self._date_priority_cells[d] = cell
+
+    def _dp_rank(self, date_val, order):
+        try:
+            return order.index(date_val) + 1
+        except ValueError:
+            return 0
+
+    def _dp_click(self, date_val):
+        order = Config.PRIORITIZE_DATES
+        if date_val in order:
+            order.remove(date_val)
+            self._date_priority_vars[date_val].set(False)
+        else:
+            order.append(date_val)
+            self._date_priority_vars[date_val].set(True)
+        self._refresh_dp()
+
+    def _refresh_dp(self):
+        order = Config.PRIORITIZE_DATES
+        for d, cell in self._date_priority_cells.items():
+            rank = self._dp_rank(d, order)
+            selected = rank > 0
+            cell.config(text=str(rank) if selected else "",
+                        bg=self.ui['primary'] if selected else self.ui['border'],
+                        fg='white' if selected else self.ui['muted_text'])
 
     def _build_time_preference_section(self, parent):
-        """构建全局时间段偏好区域。"""
-        slots_frame = ttk.LabelFrame(parent, text="⏰ 时间段偏好设置", padding="20", style='Card.TLabelframe')
-        slots_frame.pack(fill=tk.X, padx=20, pady=15)
+        slots_frame = self._make_section(parent, "⏰ 时间段偏好设置")
 
-        ttk.Label(slots_frame, text="全局时间段偏好（默认设置，当某天没有单独设置时使用）:", style='Section.TLabel').pack(pady=8, anchor=tk.W)
-        ttk.Label(slots_frame, text="时间段按从早到晚显示；勾选后会显示 1/2/3... 序号，保存按序号优先级尝试。", style='Muted.TLabel').pack(pady=(0, 8), anchor=tk.W)
+        tk.Label(slots_frame, text="全局时间段偏好 — 点击设置优先级（数字越小优先级越高）",
+                 font=self.ui['normal_font'], bg=self.ui['surface'], fg=self.ui['text'],
+                 anchor=tk.W).pack(pady=(10, 2), padx=6, anchor=tk.W)
+        tk.Label(slots_frame, text="留空时使用系统默认顺序，按从早到晚尝试",
+                 font=self.ui['small_font'], bg=self.ui['surface'], fg=self.ui['muted_text'],
+                 anchor=tk.W).pack(pady=(0, 8), padx=6, anchor=tk.W)
 
-        self.global_time_slot_vars = self._build_time_slot_selector(
-            slots_frame,
-            selected_slots=Config.PREFERRED_TIME_SLOTS,
-            columns=4,
-        )
+        # 垂直列表容器
+        list_frame = tk.Frame(slots_frame, bg=self.ui['surface'])
+        list_frame.pack(fill=tk.X, padx=10, pady=4)
 
-        ttk.Label(slots_frame, text="⚠️ 系统预约速度非常快，时间段写在前面的优先约到", style='Warning.TLabel').pack(pady=4)
+        # 初始化数据
+        saved = Config.PREFERRED_TIME_SLOTS or []
+        self.global_time_slot_vars = {
+            'items': {ts: tk.BooleanVar(value=ts in saved) for ts in self.available_time_slots},
+            'order': [ts for ts in saved if ts in self.available_time_slots],
+        }
+        self._global_cells = {}
+
+        row_bg = [self.ui['surface'], '#f8f9fc']
+        for ri, slot in enumerate(self.available_time_slots):
+            bg = row_bg[ri % 2]
+            rank = self._global_rank(slot)
+            display = str(rank) if rank else ""
+
+            row = tk.Frame(list_frame, bg=bg)
+            row.pack(fill=tk.X, pady=1)
+            row.bind('<Enter>', lambda e, c=row, b=bg: c.configure(bg=self.ui['primary_light']) if b != self.ui['primary_light'] else None)
+            row.bind('<Leave>', lambda e, c=row, b=bg: c.configure(bg=b))
+
+            cell = tk.Label(row, text=display, font=('Microsoft YaHei UI', 10 if rank else 11, 'bold'),
+                            bg=bg, fg=self.ui['primary'] if rank else self.ui['border'],
+                            width=3, anchor=tk.CENTER, cursor='hand2')
+            cell.pack(side=tk.LEFT, padx=3, pady=1, ipady=4)
+            cell.bind('<Button-1>', lambda e, s=slot: self._global_cell_click(s))
+
+            tk.Label(row, text=slot, font=('Microsoft YaHei UI', 10),
+                     bg=bg, fg=self.ui['text'], anchor=tk.W, width=14).pack(side=tk.LEFT, padx=6, pady=2)
+
+            tk.Label(row, text='', bg=bg).pack(side=tk.LEFT, fill=tk.X, expand=True, pady=2)
+
+            self._global_cells[slot] = cell
+
+        warning_frame = tk.Frame(slots_frame, bg='#fffbeb', padx=12, pady=8)
+        warning_frame.pack(fill=tk.X, padx=6, pady=(6, 4))
+        tk.Label(warning_frame, text="⚠️ 系统预约速度非常快，时间段的序号决定了尝试的先后顺序",
+                 font=self.ui['small_font'], bg='#fffbeb', fg=self.ui['warning']).pack(anchor=tk.W)
+
+    def _global_rank(self, slot):
+        order = self.global_time_slot_vars.get('order', [])
+        try:
+            return order.index(slot) + 1
+        except ValueError:
+            return 0
+
+    def _global_cell_click(self, slot):
+        data = self.global_time_slot_vars
+        var = data['items'][slot]
+        order = data['order']
+        if var.get():
+            var.set(False)
+            if slot in order:
+                order.remove(slot)
+        else:
+            var.set(True)
+            if slot not in order:
+                order.append(slot)
+        self._refresh_global_cells()
+
+    def _refresh_global_cells(self):
+        for slot in self.available_time_slots:
+            cell = self._global_cells.get(slot)
+            if not cell:
+                continue
+            rank = self._global_rank(slot)
+            cell.config(text=str(rank) if rank else "－",
+                        fg=self.ui['primary'] if rank else self.ui['border'])
+
 
     def _build_weekly_time_preference_section(self, parent):
-        """构建按星期几的时间偏好区域。"""
-        week_frame = ttk.LabelFrame(parent, text="📅 按星期几的时间段偏好", padding="20", style='Card.TLabelframe')
-        week_frame.pack(fill=tk.X, padx=20, pady=15)
-        
-        ttk.Label(week_frame, text="为每周每天设置不同偏好（留空则使用全局设置，序号越小优先级越高）:", style='Section.TLabel').pack(pady=8)
-        
-        # 星期几列表
-        weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-        weekday_names = {"monday": "周一", "tuesday": "周二", "wednesday": "周三", "thursday": "周四", "friday": "周五", "saturday": "周六", "sunday": "周日"}
-        
-        # 存储每个星期几的时间偏好
-        self.weekly_time_slot_vars = {}
-        
-        for i, weekday in enumerate(weekdays):
-            frame = ttk.Frame(week_frame)
-            frame.pack(fill=tk.X, pady=4, padx=10)
-            
-            ttk.Label(frame, text=weekday_names[weekday], style='Normal.TLabel', width=8).pack(side=tk.LEFT, padx=10)
-            
-            slot_panel = ttk.Frame(frame, style='Card.TFrame')
-            slot_panel.pack(side=tk.LEFT, padx=10, fill=tk.X, expand=True)
+        week_frame = self._make_section(parent, "📅 按星期几的时间段偏好")
 
-            slots = Config.WEEKLY_PREFERRED_TIME_SLOTS.get(weekday, [])
-            self.weekly_time_slot_vars[weekday] = self._build_time_slot_selector(
-                slot_panel,
-                selected_slots=slots,
-                columns=4,
-                compact=True,
-            )
+        hint = tk.Label(week_frame, text="点击格子设置优先级（数字越小优先级越高，留空则使用全局设置）",
+                        font=self.ui['small_font'], bg=self.ui['surface'], fg=self.ui['muted_text'],
+                        anchor=tk.W).pack(pady=(8, 4), padx=6, anchor=tk.W)
+
+        weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        weekday_labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+        self.weekly_time_slot_vars = {}
+        self._weekly_cells = {}
+
+        table_container = tk.Frame(week_frame, bg=self.ui['surface'])
+        table_container.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+
+        canvas = tk.Canvas(table_container, bg=self.ui['surface'], highlightthickness=0, height=420)
+        h_scroll = tk.Scrollbar(table_container, orient=tk.HORIZONTAL, command=canvas.xview)
+        canvas.configure(xscrollcommand=h_scroll.set)
+
+        inner = tk.Frame(canvas, bg=self.ui['surface'])
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
+
+        HEADER_BG = '#f0f2f5'
+        tk.Label(inner, text="时段", font=('Microsoft YaHei UI', 9, 'bold'),
+                 bg=HEADER_BG, fg=self.ui['text'], width=11, anchor=tk.CENTER,
+                 relief=tk.FLAT, bd=0).grid(row=0, column=0, sticky='ns', padx=1, pady=1, ipady=3)
+        for ci, name in enumerate(weekday_labels):
+            tk.Label(inner, text=name, font=('Microsoft YaHei UI', 9, 'bold'),
+                     bg=HEADER_BG, fg=self.ui['text'], width=7, anchor=tk.CENTER,
+                     relief=tk.FLAT, bd=0).grid(row=0, column=ci+1, sticky='ns', padx=1, pady=1, ipady=3)
+
+        row_bg = [self.ui['surface'], '#f8f9fc']
+        for ri, slot in enumerate(self.available_time_slots):
+            bg_color = row_bg[ri % 2]
+            r = ri + 1
+
+            tk.Label(inner, text=slot, font=('Microsoft YaHei UI', 8),
+                     bg=bg_color, fg=self.ui['muted_text'], width=11, anchor=tk.CENTER
+                     ).grid(row=r, column=0, sticky='ns', padx=1, pady=1, ipady=1)
+
+            for ci, weekday in enumerate(weekdays):
+                if weekday not in self.weekly_time_slot_vars:
+                    saved = Config.WEEKLY_PREFERRED_TIME_SLOTS.get(weekday, [])
+                    self.weekly_time_slot_vars[weekday] = {
+                        'items': {ts: tk.BooleanVar(value=ts in saved) for ts in self.available_time_slots},
+                        'order': [ts for ts in saved if ts in self.available_time_slots],
+                    }
+                var = self.weekly_time_slot_vars[weekday]['items'][slot]
+                rank = self._weekly_rank(weekday, slot)
+                display = str(rank) if rank else "－"
+                fg_color = self.ui['primary'] if rank else self.ui['border']
+
+                cell = tk.Label(inner, text=display, font=('Microsoft YaHei UI', 9, 'bold'),
+                                bg=bg_color, fg=fg_color, width=7, anchor=tk.CENTER,
+                                cursor='hand2', relief=tk.FLAT, bd=0)
+                cell.grid(row=r, column=ci+1, sticky='ns', padx=1, pady=1, ipady=2)
+                cell.bind('<Button-1>', lambda e, w=weekday, s=slot: self._weekly_cell_click(w, s))
+                cell.bind('<Enter>', lambda e, c=cell: c.configure(bg=self.ui['primary_light']))
+                cell.bind('<Leave>', lambda e, c=cell, b=bg_color: c.configure(bg=b))
+                self._weekly_cells[(weekday, slot)] = cell
+
+    def _weekly_rank(self, weekday, slot):
+        order = self.weekly_time_slot_vars[weekday].get('order', [])
+        try:
+            return order.index(slot) + 1
+        except ValueError:
+            return 0
+
+    def _weekly_cell_click(self, weekday, slot):
+        data = self.weekly_time_slot_vars[weekday]
+        var = data['items'][slot]
+        order = data['order']
+        if var.get():
+            var.set(False)
+            if slot in order:
+                order.remove(slot)
+        else:
+            var.set(True)
+            if slot not in order:
+                order.append(slot)
+        self._refresh_weekly_cells(weekday)
+
+    def _refresh_weekly_cells(self, weekday):
+        for slot in self.available_time_slots:
+            cell = self._weekly_cells.get((weekday, slot))
+            if not cell:
+                continue
+            rank = self._weekly_rank(weekday, slot)
+            cell.config(text=str(rank) if rank else "－",
+                        fg=self.ui['primary'] if rank else self.ui['border'])
 
     def _build_config_save_section(self, parent):
-        """构建配置保存操作区。"""
-        save_frame = ttk.Frame(parent)
+        save_frame = tk.Frame(parent, bg=self.ui['bg'])
         save_frame.pack(pady=25)
 
-        save_button = self._create_primary_button(save_frame, "💾 保存配置", self.save_config)
-        save_button.pack(side=tk.LEFT, padx=15)
-        
-        # 提示信息
-        ttk.Label(save_frame, text="保存后配置会写入 config.py 文件", style='Normal.TLabel').pack(side=tk.LEFT, padx=15)
+        self._save_btn = self._create_primary_button(save_frame, "💾 保存配置", self.save_config)
+        self._save_btn.pack(side=tk.LEFT, padx=10)
+        tk.Label(save_frame, text="保存后配置会写入 config.py 文件", font=self.ui['small_font'],
+                 bg=self.ui['bg'], fg=self.ui['muted_text']).pack(side=tk.LEFT, padx=10)
     
     def init_operation_tab(self):
         """初始化操作页"""
@@ -428,93 +611,95 @@ class BookingApp:
         self._build_operation_stats_section(scrollable_frame)
 
     def _build_operation_status_section(self, parent):
-        """构建操作页状态展示区域。"""
-        status_frame = ttk.LabelFrame(parent, text="📊 系统状态", padding="20", style='Card.TLabelframe')
-        status_frame.pack(fill=tk.X, padx=20, pady=15)
-        
+        status_frame = self._make_section(parent, "📊 系统状态")
+
         self.status_var = tk.StringVar(value="✅ 系统就绪")
-        status_label = ttk.Label(status_frame, textvariable=self.status_var, style='Success.TLabel', font=('Microsoft YaHei UI', 16, 'bold'))
-        status_label.pack(pady=12)
-        
-        # 详细信息
+        status_container = tk.Frame(status_frame, bg=self.ui['primary_light'], padx=16, pady=16)
+        status_container.pack(fill=tk.X, padx=10, pady=8)
+        tk.Label(status_container, textvariable=self.status_var,
+                 font=('Microsoft YaHei UI', 18, 'bold'), bg=self.ui['primary_light'], fg=self.ui['primary']).pack()
+
         self.detail_status_var = tk.StringVar(value="等待操作...")
-        detail_label = ttk.Label(status_frame, textvariable=self.detail_status_var, style='Normal.TLabel', font=('Microsoft YaHei UI', 11))
-        detail_label.pack(pady=6)
+        tk.Label(status_container, textvariable=self.detail_status_var,
+                 font=self.ui['normal_font'], bg=self.ui['primary_light'], fg=self.ui['muted_text']).pack(pady=(4, 0))
 
     def _build_operation_action_section(self, parent):
-        """构建预拉取与立即预约操作区。"""
-        action_frame = ttk.LabelFrame(parent, text="🎯 操作面板", padding="20", style='Card.TLabelframe')
-        action_frame.pack(fill=tk.X, padx=20, pady=15)
-        
-        # 预拉取场地
-        fetch_frame = ttk.Frame(action_frame)
-        fetch_frame.pack(fill=tk.X, pady=12)
-        
-        fetch_button = self._create_primary_button(fetch_frame, "📍 预拉取场地", self.fetch_venues)
-        fetch_button.pack(side=tk.LEFT, padx=15)
-        
-        ttk.Label(fetch_frame, text="测试配置，获取可用场地信息", style='Normal.TLabel').pack(side=tk.LEFT, padx=15, fill=tk.Y, expand=True)
-        
-        # 立即预约
-        book_frame = ttk.Frame(action_frame)
-        book_frame.pack(fill=tk.X, pady=12)
-        
-        book_button = self._create_primary_button(book_frame, "⚡ 立即预约", self.manual_book)
-        book_button.pack(side=tk.LEFT, padx=15)
-        
-        book_info_frame = ttk.Frame(book_frame)
-        book_info_frame.pack(side=tk.LEFT, padx=15, fill=tk.Y, expand=True)
-        ttk.Label(book_info_frame, text="立即尝试预约一次", style='Normal.TLabel').pack(anchor=tk.W)
-        ttk.Label(book_info_frame, text="⚠️ 请先点击【预拉取场地】获取数据", style='Warning.TLabel').pack(anchor=tk.W, pady=2)
+        action_frame = self._make_section(parent, "🎯 操作面板")
+
+        self._action_btns = {}
+        for btn_text, cmd, desc, warn in [
+            ("📍 预拉取场地", self.fetch_venues, "测试配置，获取可用场地信息", None),
+            ("⚡ 立即预约", self.manual_book, "立即尝试预约一次", "⚠️ 请先点击【预拉取场地】获取数据"),
+        ]:
+            row = tk.Frame(action_frame, bg=self.ui['surface'])
+            row.pack(fill=tk.X, pady=6, padx=6)
+
+            btn = self._create_primary_button(row, btn_text, cmd)
+            btn.pack(side=tk.LEFT, padx=8)
+            self._action_btns[btn_text.strip("📍⚡ ")] = btn
+
+            info_col = tk.Frame(row, bg=self.ui['surface'])
+            info_col.pack(side=tk.LEFT, padx=8, fill=tk.Y, expand=True)
+            tk.Label(info_col, text=desc, font=self.ui['normal_font'],
+                     bg=self.ui['surface'], fg=self.ui['text'], anchor=tk.W).pack(anchor=tk.W)
+            if warn:
+                warn_label = tk.Label(info_col, text=warn, font=self.ui['small_font'],
+                         bg=self.ui['surface'], fg=self.ui['warning'], anchor=tk.W)
+                warn_label.pack(anchor=tk.W, pady=2)
 
     def _build_operation_auto_section(self, parent):
-        """构建自动预约控制区。"""
-        auto_frame = ttk.LabelFrame(parent, text="🔄 自动预约控制", padding="20", style='Card.TLabelframe')
-        auto_frame.pack(fill=tk.X, padx=20, pady=15)
-        
-        ttk.Label(auto_frame, text="启动后系统会在每天 08:00 自动尝试预约", style='Normal.TLabel').pack(pady=8)
-        
-        button_frame = ttk.Frame(auto_frame)
-        button_frame.pack(pady=12)
-        
-        start_button = self._create_primary_button(button_frame, "▶️ 启动自动预约", self.start_auto_booking)
-        start_button.pack(side=tk.LEFT, padx=15)
+        auto_frame = self._make_section(parent, "🔄 自动预约控制")
 
-        stop_button = self._create_primary_button(button_frame, "⏹️ 停止自动预约", self.stop_auto_booking)
-        stop_button.pack(side=tk.LEFT, padx=15)
+        desc_frame = tk.Frame(auto_frame, bg=self.ui['surface'])
+        desc_frame.pack(fill=tk.X, padx=10, pady=(10, 4))
+        tk.Label(desc_frame, text="启动后系统会在每天 08:00 自动尝试预约",
+                 font=self.ui['normal_font'], bg=self.ui['surface'], fg=self.ui['text']).pack(anchor=tk.W)
+
+        button_frame = tk.Frame(auto_frame, bg=self.ui['surface'])
+        button_frame.pack(pady=(8, 14))
+
+        self._start_auto_btn = self._create_primary_button(button_frame, "▶️ 启动自动预约", self.start_auto_booking)
+        self._start_auto_btn.pack(side=tk.LEFT, padx=12)
+
+        self._stop_auto_btn = tk.Label(button_frame, text="⏹️ 停止自动预约", font=self.ui['action_font'],
+                            bg=self.ui['surface'], fg=self.ui['error'], padx=16, pady=9, cursor='hand2')
+        self._stop_auto_btn.pack(side=tk.LEFT, padx=12)
+        self._stop_auto_btn.bind('<Button-1>', lambda e: self.stop_auto_booking())
+        self._stop_auto_btn.bind('<Enter>', lambda e: self._stop_auto_btn.configure(bg='#fef2f2'))
+        self._stop_auto_btn.bind('<Leave>', lambda e: self._stop_auto_btn.configure(bg=self.ui['surface']))
 
     def _build_operation_stats_section(self, parent):
-        """构建统计信息区域。"""
-        stats_frame = ttk.LabelFrame(parent, text="📈 统计信息", padding="20", style='Card.TLabelframe')
-        stats_frame.pack(fill=tk.X, padx=20, pady=15)
-        
+        stats_frame = self._make_section(parent, "📈 统计信息")
+
         self.stats_var = tk.StringVar(value="预约次数：0 | 最后预约时间：未预约")
-        stats_label = ttk.Label(stats_frame, textvariable=self.stats_var, style='Normal.TLabel', font=('Microsoft YaHei UI', 11))
-        stats_label.pack(pady=8)
+        stat_container = tk.Frame(stats_frame, bg=self.ui['primary_light'], padx=16, pady=12)
+        stat_container.pack(fill=tk.X, padx=10, pady=8)
+        tk.Label(stat_container, textvariable=self.stats_var, font=self.ui['normal_font'],
+                 bg=self.ui['primary_light'], fg=self.ui['primary']).pack()
     
     def init_log_tab(self):
-        """初始化日志页"""
-        # 日志控制区域
-        control_frame = ttk.Frame(self.log_tab)
-        control_frame.pack(fill=tk.X, padx=20, pady=10)
-        
-        ttk.Label(control_frame, text="📋 操作日志 - 实时记录系统运行状态", style='Section.TLabel').pack(side=tk.LEFT, padx=10)
-        
-        clear_button = ttk.Button(control_frame, text="🗑️ 清空日志", command=self.clear_log, style='Normal.TButton')
-        clear_button.pack(side=tk.RIGHT, padx=10)
-        
-        # 日志文本框
-        self.log_text = scrolledtext.ScrolledText(self.log_tab, wrap=tk.WORD, font=('Consolas', 11))
+        control_frame = tk.Frame(self.log_tab, bg=self.ui['surface'])
+        control_frame.pack(fill=tk.X, padx=20, pady=(15, 5))
+
+        tk.Label(control_frame, text="📋 操作日志", font=self.ui['subtitle_font'],
+                 bg=self.ui['surface'], fg=self.ui['primary']).pack(side=tk.LEFT, padx=10)
+
+        clear_btn = tk.Label(control_frame, text="🗑️ 清空日志", font=self.ui['normal_font'],
+                             bg=self.ui['surface'], fg=self.ui['muted_text'], cursor='hand2')
+        clear_btn.pack(side=tk.RIGHT, padx=10)
+        clear_btn.bind('<Button-1>', lambda e: self.clear_log())
+        clear_btn.bind('<Enter>', lambda e: clear_btn.configure(fg=self.ui['error']))
+        clear_btn.bind('<Leave>', lambda e: clear_btn.configure(fg=self.ui['muted_text']))
+
+        self.log_text = scrolledtext.ScrolledText(self.log_tab, wrap=tk.WORD, font=('Consolas', 11),
+                                                   borderwidth=1, relief=tk.FLAT, bg="#fafbfc",
+                                                   foreground=self.ui['text'], insertbackground=self.ui['text'])
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
-        
-        # 设置日志文本颜色
-        self.log_text.tag_config("info", foreground="#2c3e50")
-        self.log_text.tag_config("success", foreground="#27ae60")
-        self.log_text.tag_config("warning", foreground="#e67e22")
-        self.log_text.tag_config("error", foreground="#c0392b")
-        
-        # 设置日志文本框的边框和背景
-        self.log_text.config(borderwidth=1, relief=tk.SUNKEN, bg="#fbfdff", foreground="#1f2d3d", insertbackground="#1f2d3d")
+
+        self.log_text.tag_config("info", foreground=self.ui['muted_text'])
+        self.log_text.tag_config("success", foreground=self.ui['success'])
+        self.log_text.tag_config("warning", foreground=self.ui['warning'])
+        self.log_text.tag_config("error", foreground=self.ui['error'])
         
         # 添加初始日志
         self.log("系统初始化完成", "success")
@@ -529,25 +714,30 @@ class BookingApp:
         self.log("日志已清空", "info")
     
     def save_config(self):
-        """保存配置"""
+        self._save_btn.config(text="⏳ 保存中...", bg=self.ui['primary_hover'])
+        self.root.update_idletasks()
         try:
             self._apply_form_values_to_config()
             self._persist_config_file()
-            
+
+            self._save_btn.config(text="✅ 已保存", bg=self.ui['success'])
+            self.root.after(1500, lambda: self._save_btn.config(text="💾 保存配置", bg=self.ui['primary']))
             self.log("配置保存成功！", "success")
             self.welcome_status_var.set("配置已保存，可以开始使用")
             messagebox.showinfo("✅ 成功", "配置保存成功！\n\n请切换到【操作】页面进行预约。")
         except Exception as e:
+            self._save_btn.config(text="❌ 失败", bg=self.ui['error'])
+            self.root.after(2000, lambda: self._save_btn.config(text="💾 保存配置", bg=self.ui['primary']))
             self.log(f"保存配置失败：{str(e)}", "error")
             messagebox.showerror("❌ 错误", f"保存配置失败：{str(e)}")
 
     def _collect_global_slots_from_ui(self):
-        return self._collect_slots_from_vars(self.global_time_slot_vars)
+        return list(self.global_time_slot_vars.get('order', []))
 
     def _collect_weekly_slots_from_ui(self):
         weekly_slots = {}
-        for weekday, slot_vars in self.weekly_time_slot_vars.items():
-            weekly_slots[weekday] = self._collect_slots_from_vars(slot_vars)
+        for weekday, data in self.weekly_time_slot_vars.items():
+            weekly_slots[weekday] = list(data.get('order', []))
         return weekly_slots
 
     def _apply_form_values_to_config(self):
@@ -556,7 +746,7 @@ class BookingApp:
         Config.LOGIN_DATA['mm'] = self.password_var.get().strip()
         Config.DEFAULT_USERS = self.users_var.get().strip()
         Config.SERVICE_ID = self.service_var.get().strip()
-        Config.PRIORITIZE_DATES = self._normalize_date_priority_input(self.date_priority_var.get())
+        # 日期优先级已被 _dp_click 直接修改 Config.PRIORITIZE_DATES
         Config.PREFERRED_TIME_SLOTS = self._collect_global_slots_from_ui()
         Config.WEEKLY_PREFERRED_TIME_SLOTS = self._collect_weekly_slots_from_ui()
 
@@ -603,8 +793,6 @@ class BookingApp:
 
     def _replace_login_fields(self, content):
         """仅在 LOGIN_DATA 字典块内替换账号字段，避免误替换其他位置。"""
-        import re
-
         block_pattern = r"(LOGIN_DATA\s*=\s*\{)(.*?)(\n\s*\})"
         block_match = re.search(block_pattern, content, flags=re.DOTALL)
         if not block_match:
@@ -619,8 +807,6 @@ class BookingApp:
 
     def _replace_singleline_assignment(self, content, key, value):
         """替换形如 KEY = value 的单行赋值。"""
-        import re
-
         pattern = rf"^(\s*{re.escape(key)}\s*=\s*).*$"
         replacement = rf"\1{repr(value)}"
         updated, count = re.subn(pattern, replacement, content, flags=re.MULTILINE)
@@ -630,8 +816,6 @@ class BookingApp:
 
     def _replace_login_field_in_block(self, block_body, field_key, field_value):
         """在指定 LOGIN_DATA 字典体中替换单个字段值。"""
-        import re
-
         pattern = rf"([\'\"]{re.escape(field_key)}[\'\"]\s*:\s*)[\'\"][^\'\"]*[\'\"]"
         replacement = rf"\1{repr(field_value)}"
         updated, count = re.subn(pattern, replacement, block_body)
@@ -640,37 +824,41 @@ class BookingApp:
         return updated
     
     def fetch_venues(self):
-        """预拉取场地"""
+        self._action_btns.setdefault("预拉取场地", tk.Label())
+        self._action_btns["预拉取场地"].config(text="⏳ 拉取中...", bg=self.ui['primary_hover'])
+        self.root.update_idletasks()
         def fetch_task():
             self._set_status("⏳ 正在拉取场地...", "正在连接服务器获取场地信息...")
             try:
                 self._ensure_dependencies()
-                
-                setup_config()
+                setup_config(scan_all=True)
+                self._action_btns["预拉取场地"].config(text="✅ 已获取", bg=self.ui['success'])
+                self.root.after(2000, lambda: self._action_btns["预拉取场地"].config(text="📍 预拉取场地", bg=self.ui['primary']))
                 self.log("场地拉取成功！", "success")
                 self._set_status("✅ 场地拉取成功", "配置正确，可以开始预约")
                 messagebox.showinfo("✅ 成功", "场地拉取成功！\n\n请切换到【操作】页面进行预约。")
             except Exception as e:
+                self._action_btns["预拉取场地"].config(text="❌ 失败", bg=self.ui['error'])
+                self.root.after(2000, lambda: self._action_btns["预拉取场地"].config(text="📍 预拉取场地", bg=self.ui['primary']))
                 self.log(f"拉取场地失败：{str(e)}", "error")
                 self._set_status("❌ 拉取失败", "请检查配置和网络连接")
                 messagebox.showerror("❌ 错误", f"拉取场地失败：{str(e)}")
-
         self._run_in_background(fetch_task)
-    
+
     def manual_book(self):
-        """手动预约"""
+        self._action_btns["立即预约"].config(text="⏳ 预约中...", bg=self.ui['primary_hover'])
+        self.root.update_idletasks()
         def book_task():
             self._set_status("⏳ 正在预约...", "正在尝试预约场地...")
             try:
                 self._ensure_dependencies()
-                
-                # 检查是否已预拉取数据
                 required_keys = ['stockid', 'stockdetail_id']
                 missing = [key for key in required_keys if not Config.BOOKING_DATA.get(key)]
                 if missing:
                     raise RuntimeError("请先点击【预拉取场地】获取数据，然后再尝试预约")
-                
-                Booking.book_venue()
+                book_venue()
+                self._action_btns["立即预约"].config(text="✅ 已预约", bg=self.ui['success'])
+                self.root.after(2000, lambda: self._action_btns["立即预约"].config(text="⚡ 立即预约", bg=self.ui['primary']))
                 self.log("预约成功！", "success")
                 self._set_status("✅ 预约成功", "预约已完成，请查看日志")
                 self.booking_count += 1
@@ -678,10 +866,11 @@ class BookingApp:
                 self.update_stats()
                 messagebox.showinfo("✅ 成功", "预约成功！\n\n请查看【日志】页面了解详情。")
             except Exception as e:
+                self._action_btns["立即预约"].config(text="❌ 失败", bg=self.ui['error'])
+                self.root.after(2000, lambda: self._action_btns["立即预约"].config(text="⚡ 立即预约", bg=self.ui['primary']))
                 self.log(f"预约失败：{str(e)}", "error")
                 self._set_status("❌ 预约失败", "预约失败，请查看日志")
                 messagebox.showerror("❌ 错误", f"预约失败：{str(e)}")
-
         self._run_in_background(book_task)
     
     def start_auto_booking(self):
@@ -696,8 +885,12 @@ class BookingApp:
             messagebox.showerror("❌ 错误", str(e))
             return
         
+        self._start_auto_btn.config(text="⏳ 启动中...", bg=self.ui['primary_hover'])
+        self.root.update_idletasks()
+
         def scheduler_task():
             self.scheduler_running = True
+            self._start_auto_btn.config(text="▶️ 运行中", bg=self.ui['success'])
             self._set_status("🔄 自动预约运行中", "系统将在每天 08:00 自动尝试预约")
             self.log("自动预约已启动", "success")
             try:
@@ -708,6 +901,7 @@ class BookingApp:
             finally:
                 self.scheduler_running = False
                 self.scheduler_thread = None
+                self._start_auto_btn.config(text="▶️ 启动自动预约", bg=self.ui['primary'])
 
         self.scheduler_thread = self._run_in_background(scheduler_task)
         messagebox.showinfo("✅ 成功", "自动预约已启动！\n\n系统会在每天 08:00 自动尝试预约。\n请保持程序运行。")
@@ -799,109 +993,36 @@ class BookingApp:
         self.root.after(1000, self._tick_clock)
 
     def _create_primary_button(self, parent, text, command):
-        """创建统一样式的主要操作按钮。"""
-        return tk.Button(
+        btn = tk.Label(
             parent,
             text=text,
-            command=command,
             font=self.ui['action_font'],
             bg=self.ui['primary'],
             fg='white',
             padx=20,
             pady=10,
-            relief=tk.RAISED,
-            activebackground=self.ui['primary_hover'],
-            activeforeground='white',
-            borderwidth=0,
             cursor='hand2',
         )
+        btn.bind('<Button-1>', lambda e, cmd=command: cmd())
+        btn.bind('<Enter>', lambda e: btn.configure(bg=self.ui['primary_hover']))
+        btn.bind('<Leave>', lambda e: btn.configure(bg=self.ui['primary']))
+        return btn
 
-    def _build_time_slot_selector(self, parent, selected_slots, columns=4, compact=False):
-        """构建时间段勾选器，返回带优先级顺序信息的选择器状态。"""
-        normalized_selected = [item.strip() for item in (selected_slots or []) if item and item.strip()]
-        merged_slots = list(dict.fromkeys(normalized_selected + self.available_time_slots))
-        merged_slots.sort(key=self._time_slot_sort_key)
-
-        selector_state = {
-            'items': [],
-            'order': [slot for slot in normalized_selected if slot in merged_slots],
-        }
-        panel = ttk.Frame(parent, style='Card.TFrame')
-        panel.pack(fill=tk.X, padx=6, pady=4)
-
-        for idx, slot in enumerate(merged_slots):
-            var = tk.BooleanVar(value=slot in normalized_selected)
-
-            row = idx // columns
-            col = idx % columns
-            cb = tk.Checkbutton(
-                panel,
-                text=slot,
-                variable=var,
-                command=lambda slot=slot, state=selector_state: self._on_time_slot_toggled(state, slot),
-                anchor='w',
-                justify='left',
-                bg=self.ui['surface'],
-                fg=self.ui['text'],
-                activebackground=self.ui['surface'],
-                activeforeground=self.ui['text'],
-                selectcolor=self.ui['surface'],
-                font=('Microsoft YaHei UI', 9 if compact else 10),
-                padx=4,
-                pady=2,
-            )
-            cb.grid(row=row, column=col, sticky='w', padx=6, pady=2)
-            selector_state['items'].append({
-                'slot': slot,
-                'var': var,
-                'checkbox': cb,
-            })
-
-        self._refresh_time_slot_labels(selector_state)
-
-        return selector_state
-
-    def _on_time_slot_toggled(self, selector_state, slot):
-        """处理勾选变化，维护选择顺序并刷新序号显示。"""
-        items = selector_state.get('items', [])
-        order = selector_state.get('order', [])
-
-        selected = False
-        for item in items:
-            if item['slot'] == slot:
-                selected = bool(item['var'].get())
-                break
-
-        if selected and slot not in order:
-            order.append(slot)
-        elif not selected and slot in order:
-            order.remove(slot)
-
-        self._refresh_time_slot_labels(selector_state)
-
-    def _refresh_time_slot_labels(self, selector_state):
-        """刷新时间段文本，已勾选项展示优先级序号。"""
-        order = selector_state.get('order', [])
-        index_map = {slot: idx + 1 for idx, slot in enumerate(order)}
-
-        for item in selector_state.get('items', []):
-            slot = item['slot']
-            rank = index_map.get(slot)
-            if rank is None:
-                item['checkbox'].configure(text=f"- {slot}")
-            else:
-                item['checkbox'].configure(text=f"{rank}. {slot}")
-
-    def _collect_slots_from_vars(self, slot_vars):
-        """收集已勾选时间段，优先使用显式序号顺序。"""
-        if isinstance(slot_vars, dict):
-            return list(slot_vars.get('order', []))
-
-        selected = []
-        for slot, var in slot_vars:
-            if var.get():
-                selected.append(slot)
-        return selected
+    def _create_secondary_button(self, parent, text, command):
+        btn = tk.Label(
+            parent,
+            text=text,
+            font=self.ui['action_font'],
+            bg=self.ui['surface'],
+            fg=self.ui['primary'],
+            padx=16,
+            pady=8,
+            cursor='hand2',
+        )
+        btn.bind('<Button-1>', lambda e, cmd=command: cmd())
+        btn.bind('<Enter>', lambda e: btn.configure(bg=self.ui['primary_light']))
+        btn.bind('<Leave>', lambda e: btn.configure(bg=self.ui['surface']))
+        return btn
 
     def _normalize_date_priority_input(self, raw_text):
         """规范化日期优先级输入，去空值并保留原有顺序。"""

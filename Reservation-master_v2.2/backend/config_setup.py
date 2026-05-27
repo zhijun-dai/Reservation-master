@@ -1,12 +1,11 @@
 from typing import Any
 
-try:
-    from .config import Config
-    from .fetch_data import FetchData
-except ImportError:
-    # 兼容直接在 backend 目录下运行脚本
-    from config import Config
-    from fetch_data import FetchData
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import _compat
+
+from backend.config import Config, booking_date_candidates, fetch_candidates, preferred_time_slots_for_date
+from backend.fetch_data import fetch_service_data
 
 
 def _normalize_time(value: str) -> str:
@@ -14,8 +13,7 @@ def _normalize_time(value: str) -> str:
 
 
 def _load_slots(date: str, serviceid: str) -> list[dict[str, Any]]:
-    # 始终从服务端拉取最新数据，确保时效性
-    data = FetchData.fetch_service_data(date, serviceid)
+    data = fetch_service_data(date, serviceid)
     return data or []
 
 
@@ -38,13 +36,6 @@ def _print_available_times(slots: list[dict[str, Any]]) -> None:
     print(f"- 可用时间段: {sorted(available_times)}")
 
 
-def _has_preferred_match(candidates: list[dict[str, Any]], preferred_times: list[str]) -> bool:
-    for slot in candidates[:10]:
-        if _slot_time_no(slot) in preferred_times:
-            return True
-    return False
-
-
 def _print_summary(all_slot_candidates: list[dict[str, str]]) -> None:
     print("配置已完成，已收集候选时段:")
     print(f"- 候选总数: {len(all_slot_candidates)} (按日期/时间段/场地组合计)")
@@ -63,13 +54,10 @@ def _print_summary(all_slot_candidates: list[dict[str, str]]) -> None:
 
 
 def _pick_preferred_slots(date: str, slots: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """返回按偏好顺序排列的候选时段列表（可能为空）。
-    如果开启 Config.TRY_ALL_SLOTS_FOR_TEST，则返回所有符合关键字过滤的时段，顺序与输入相同。
-    """
-    preferred_times = [_normalize_time(ts) for ts in Config.preferred_time_slots_for_date(date)]
+    """返回按偏好顺序排列的候选时段列表（可能为空）。"""
+    preferred_times = [_normalize_time(ts) for ts in preferred_time_slots_for_date(date)]
     keyword = Config.VENUE_KEYWORD.strip()
 
-    # 测试模式：强制尝试所有时段（按原始顺序）
     if getattr(Config, 'TRY_ALL_SLOTS_FOR_TEST', False):
         result = []
         for slot in slots:
@@ -78,7 +66,6 @@ def _pick_preferred_slots(date: str, slots: list[dict[str, Any]]) -> list[dict[s
         return result
 
     matches = []
-    # 先按偏好时间顺序收集匹配项
     for pref in preferred_times:
         for slot in slots:
             time_no = _slot_time_no(slot)
@@ -86,7 +73,6 @@ def _pick_preferred_slots(date: str, slots: list[dict[str, Any]]) -> list[dict[s
                 if slot not in matches:
                     matches.append(slot)
 
-    # 回退到任意可用场地（优先包含关键字的场地）
     if Config.FALLBACK_TO_FIRST_AVAILABLE and slots:
         if keyword:
             for slot in slots:
@@ -99,7 +85,10 @@ def _pick_preferred_slots(date: str, slots: list[dict[str, Any]]) -> list[dict[s
     return matches
 
 
-def setup_config():
+def setup_config(scan_all: bool = False):
+    """扫描场地并填充候选列表。
+    如果 scan_all=True（预拉取按钮），扫描未来 FETCH_SCAN_DAYS 天；
+    否则（调度器），按 PRIORITIZE_DATES 优先级查找。"""
     serviceid = Config.SERVICE_ID
     users = Config.DEFAULT_USERS.strip()
     if not users:
@@ -112,17 +101,17 @@ def setup_config():
     all_slot_candidates: list[dict[str, str]] = []
     first_candidate_info: dict[str, str] | None = None
     last_error = None
-    for date in Config.booking_date_candidates():
+    dates = fetch_candidates() if scan_all else booking_date_candidates()
+    for date in dates:
         print(f"准备预约 {date} 的场次 (serviceid={serviceid})")
         slots = _load_slots(date, serviceid)
         if not slots:
             last_error = f"{date} 未拉取到任何场地数据。"
             continue
 
-        # 显示优先时间段
-        preferred_times = [_normalize_time(ts) for ts in Config.preferred_time_slots_for_date(date)]
+        preferred_times = [_normalize_time(ts) for ts in preferred_time_slots_for_date(date)]
         print(f"- 优先时间段: {preferred_times}")
-        
+
         _print_available_times(slots)
 
         candidates = _pick_preferred_slots(date, slots)
@@ -130,20 +119,11 @@ def setup_config():
             last_error = f"{date} 没有符合偏好的场地。"
             continue
 
-        # 检查是否有匹配的偏好时间段
-        matched_preferred = _has_preferred_match(candidates, preferred_times)
-        
-        if matched_preferred:
-            print("- 成功匹配到偏好时间段，按优先级排序")
-        else:
-            print("- 未匹配到偏好时间段，使用所有可用场地")
-
         slot_candidates = [_build_slot_candidate(date, slot) for slot in candidates]
         if aggregate_mode:
             all_slot_candidates.extend(slot_candidates)
             if first_candidate_info is None and slot_candidates:
                 first_candidate_info = slot_candidates[0]
-            # 在测试模式下继续收集后续日期
             continue
         else:
             all_slot_candidates = slot_candidates

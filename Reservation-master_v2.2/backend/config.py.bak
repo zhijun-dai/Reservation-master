@@ -1,0 +1,228 @@
+# config.py
+import datetime
+
+class Config:
+    # 登录账号信息
+    LOGIN_DATA = {
+        'dlm': '25080231',
+        'mm': '212020',
+        'yzm': '1',
+        'logintype': 'sno',
+        'continueurl': '',
+        'openid': ''
+    }
+
+    # 默认使用者学号（多个以 / 分隔）
+    DEFAULT_USERS = '25080231/24080123'
+
+    # 羽毛球馆 serviceid
+    SERVICE_ID = '22'
+
+    # 优先预约的时间段列表（按顺序尝试）
+    PREFERRED_TIME_SLOTS = ['20:01-21:00', '19:01-20:00', '21:01-22:00']
+
+    # 每周的优先预约时间段
+    WEEKLY_PREFERRED_TIME_SLOTS = {'monday': ['18:01-19:00'], 'tuesday': ['20:01-21:00', '19:01-20:00', '21:01-22:00'], 'wednesday': ['18:01-19:00', '19:01-20:00'], 'thursday': ['18:01-19:00', '19:01-20:00'], 'friday': ['18:01-19:00'], 'saturday': ['19:01-20:00'], 'sunday': ['20:01-21:00', '19:01-20:00', '21:01-22:00']}
+
+    # 场馆名称关键字过滤
+    VENUE_KEYWORD = ''
+
+    # 是否在没有匹配到偏好时间段时回退到任意可用场地
+    FALLBACK_TO_FIRST_AVAILABLE = True
+
+    # 是否允许将今天纳入候选
+    ALLOW_SAME_DAY_BOOKING = True
+
+    # 优先尝试的日期顺序
+    PRIORITIZE_DATES = ['tomorrow', 'today']
+
+    # 是否在配置阶段聚合所有候选日期的时段
+    AGGREGATE_ALL_DATES = False
+
+    # 运行时预约参数
+    BOOKING_DATA = {
+        'serviceid': SERVICE_ID,
+        'users': DEFAULT_USERS,
+        'date': '',
+        'time_slot': '',
+        'venue_id': '',
+        'stockid': '',
+        'stockdetail_id': ''
+    }
+
+    # 基础 URL
+    BASE_URL = 'http://order.njmu.edu.cn:8088'
+
+    # 预约允许执行的时间段
+    BOOKING_HOURS = (8, 23)
+
+    # 每天自动尝试预约的时间
+    SCHEDULE_TIME = "08:00"
+
+    # 放号窗口宽度（分钟）
+    RELEASE_WINDOW_MINUTES = 30
+
+    # 网络请求超时（秒）
+    REQUEST_TIMEOUT_SECONDS = 10
+
+    # 登录会话缓存 TTL（秒）
+    SESSION_CACHE_TTL_SECONDS = 300
+
+    # 测试时强制尝试所有时段
+    TRY_ALL_SLOTS_FOR_TEST = False
+
+    # 星期名称
+    WEEKDAY_NAMES = (
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday"
+    )
+
+
+def is_booking_time():
+    """判断当前时间是否在允许的预约时间段内"""
+    now = datetime.datetime.now().time()
+    start_time = datetime.time(Config.BOOKING_HOURS[0], 0)
+    end_time = datetime.time(Config.BOOKING_HOURS[1], 0)
+    return start_time <= now <= end_time
+
+
+def release_window_bounds(reference: datetime.datetime | None = None):
+    """返回参考时间所在日期的放号窗口 [start, end)"""
+    ref = reference or datetime.datetime.now()
+    hour, minute = map(int, Config.SCHEDULE_TIME.split(':'))
+    start = datetime.datetime.combine(ref.date(), datetime.time(hour, minute))
+    end = start + datetime.timedelta(minutes=Config.RELEASE_WINDOW_MINUTES)
+    return start, end
+
+
+def is_release_window(reference: datetime.datetime | None = None) -> bool:
+    """判断当前时间是否在放号窗口内"""
+    ref = reference or datetime.datetime.now()
+    start, end = release_window_bounds(ref)
+    return start <= ref < end
+
+
+def preferred_time_slots_for_date(date_value):
+    """返回指定日期应当尝试的时间段列表"""
+    if isinstance(date_value, datetime.date):
+        target_date = date_value
+    else:
+        try:
+            target_date = datetime.date.fromisoformat(str(date_value))
+        except ValueError:
+            target_date = None
+
+    weekly = Config.WEEKLY_PREFERRED_TIME_SLOTS or {}
+    if target_date:
+        weekday_index = target_date.weekday()
+        weekday_key = Config.WEEKDAY_NAMES[weekday_index]
+        candidates = (
+            weekly.get(weekday_key)
+            or weekly.get(weekday_key[:3])
+            or weekly.get(str(weekday_index))
+            or weekly.get('default')
+        )
+    else:
+        candidates = weekly.get('default')
+
+    if not candidates:
+        candidates = Config.PREFERRED_TIME_SLOTS
+
+    return [slot.strip() for slot in candidates if slot and slot.strip()]
+
+
+def booking_date_candidates_at(reference: datetime.datetime | None = None):
+    """按优先级返回可尝试的预约日期列表（基于参考时间）"""
+    priority_raw = getattr(Config, 'PRIORITIZE_DATES', None) or ['today', 'tomorrow']
+    dates = []
+    ref_now = reference or datetime.datetime.now()
+    today = ref_now.date()
+    now = ref_now
+
+    include_today = False
+    try:
+        for ts in preferred_time_slots_for_date(today):
+            if not ts or '-' not in ts:
+                continue
+            start_str = ts.split('-')[0].strip()
+            hh, mm = start_str.split(':')
+            start_time = datetime.time(int(hh), int(mm))
+            if now.time() < start_time:
+                include_today = True
+                break
+    except Exception:
+        include_today = False
+
+    if is_booking_time():
+        include_today = True
+
+    allow_same_day = getattr(Config, 'ALLOW_SAME_DAY_BOOKING', True)
+
+    priority_offsets = []
+    for entry in priority_raw:
+        if entry is None:
+            continue
+        text = str(entry).strip().lower()
+        if not text:
+            continue
+        if text == 'today':
+            priority_offsets.append(0)
+            continue
+        if text == 'tomorrow':
+            priority_offsets.append(1)
+            continue
+        if text.startswith('day+'):
+            try:
+                priority_offsets.append(int(text.replace('day+', '')))
+                continue
+            except ValueError:
+                pass
+        try:
+            priority_offsets.append(int(text))
+        except ValueError:
+            continue
+
+    ordered_offsets = []
+    seen_offsets = set()
+
+    def push_offset(value: int):
+        if value == 0 and not allow_same_day:
+            return
+        if value == 0 and not include_today:
+            return
+        if value in seen_offsets:
+            return
+        ordered_offsets.append(value)
+        seen_offsets.add(value)
+
+    for value in priority_offsets:
+        push_offset(value)
+
+    if not ordered_offsets:
+        fallback_list = []
+        if allow_same_day and include_today:
+            fallback_list.append(0)
+        fallback_list.append(1)
+        for candidate in fallback_list:
+            try:
+                push_offset(int(candidate))
+            except (TypeError, ValueError):
+                continue
+            if ordered_offsets:
+                break
+
+    for days in ordered_offsets:
+        target = today + datetime.timedelta(days=days)
+        dates.append(target.isoformat())
+
+    return dates
+
+
+def booking_date_candidates():
+    """按优先级返回可尝试的预约日期列表"""
+    return booking_date_candidates_at()
